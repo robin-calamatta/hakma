@@ -105,7 +105,7 @@ export function recordAnswer(save, q, correct, quick) {
 // ---------------------------------------------------------------- local save slots
 const SLOT_KEY = (n) => 'hakma.slot.' + n;
 export function listSlots() { return [0, 1, 2].map((n) => { try { return JSON.parse(localStorage.getItem(SLOT_KEY(n)) || 'null'); } catch { return null; } }); }
-export function writeSlot(n, save) { save.updated = Date.now(); localStorage.setItem(SLOT_KEY(n), JSON.stringify(save)); }
+export function writeSlot(n, save) { localStorage.removeItem('hakma.deleted.' + n); save.updated = Date.now(); localStorage.setItem(SLOT_KEY(n), JSON.stringify(save)); }
 export function readSlot(n) { try { return JSON.parse(localStorage.getItem(SLOT_KEY(n)) || 'null'); } catch { return null; } }
 export function deleteSlot(n) { localStorage.removeItem(SLOT_KEY(n)); }
 export function migrate(save) {

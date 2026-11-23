@@ -30,6 +30,7 @@ export const net = {
       const { saves } = await this.api('GET', '/api/saves'); const local = listSlots(); let n = 0;
       for (const sv of saves) {
         const l = local[sv.slot]; const newer = !l || (sv.updated_at > (l.updated || 0) && sv.data.id);
+        const tomb = +localStorage.getItem('hakma.deleted.' + sv.slot) || 0; if (!l && tomb && sv.updated_at <= tomb) { this.api('DELETE', '/api/saves/' + sv.slot).catch(() => {}); continue; } // deleted on this device
         if (!newer) continue;
         // never swap out the save you're playing right now — ask the player to reload from the title screen instead
         if (G.save && !G.title && G.slot === sv.slot) { this.conflicts.add(sv.slot); ui.toast('☁ A newer cloud save exists for this slot. Return to the Title Screen to load it (this slot won\'t upload until then).', 6000); continue; }

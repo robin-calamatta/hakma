@@ -197,15 +197,8 @@ body.portrait .rmap { grid-template-columns: 1fr; }
 .lm-links { flex-wrap: wrap; }
 .qfeedback .lmore { display: block; margin-top: 0.4em; width: 100%; }
 .qfeedback .lmore.sel { outline: calc(var(--px)) solid var(--acc); }
-/* movement control: thumbstick (default) or cross d-pad */
-#dpad .knob, #dpad .cross { display: none; pointer-events: none; }
-#dpad.stick { background: radial-gradient(circle at 50% 45%, #2c2258 0%, #1a1240 62%, #120c30 100%); border: 3px solid #3a2f74; box-shadow: inset 0 0 0 10px rgba(255,255,255,0.03), inset 0 6px 18px rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.35); }
-#dpad.stick span { opacity: 0.28; font-size: 12px; }
-#dpad.stick .knob { display: block; position: absolute; left: 50%; top: 50%; width: 44%; height: 44%; border-radius: 50%; transform: translate(-50%, -50%); transition: transform 0.08s ease-out;
-  background: radial-gradient(circle at 38% 32%, #8a7ae0 0%, #5a48b8 38%, #3a2c8a 72%, #2a1f66 100%); border: 2px solid #9d8cff;
-  box-shadow: 0 5px 10px rgba(0,0,0,0.55), inset 0 -4px 6px rgba(0,0,0,0.35), inset 0 3px 4px rgba(255,255,255,0.25); }
-#dpad.stick .knob::after { content: ''; position: absolute; inset: 22%; border-radius: 50%; background: repeating-radial-gradient(circle, rgba(255,255,255,0.10) 0 2px, transparent 2px 5px); }
-#dpad.stick.pu span.u, #dpad.stick.pd span.d, #dpad.stick.pl span.l, #dpad.stick.pr span.r { opacity: 0.9; color: #ffd23f; }
+/* movement control: cross d-pad */
+#dpad .cross { display: none; pointer-events: none; }
 #dpad.cross-pad { background: transparent; border: none; box-shadow: none; border-radius: 0; }
 #dpad.cross-pad .cross { display: block; position: absolute; inset: 0; }
 #dpad.cross-pad .cross::before, #dpad.cross-pad .cross::after { content: ''; position: absolute; background: linear-gradient(#3a3050, #22192f); border: 3px solid #120c1e; border-radius: 6px; box-shadow: 0 4px 0 #0a0612, inset 0 2px 0 rgba(255,255,255,0.12); }

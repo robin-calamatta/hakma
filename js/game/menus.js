@@ -227,12 +227,12 @@ async function addLocal() {
 
 // ------------------------------------------------------------ settings & help
 export async function settings() {
-  const st = G.settings; const keys = ['music', 'sfx', 'timer', 'timerSec', 'textSpeed', 'daynight', 'pad', 'full'];
-  const lbl = { music: 'Music volume', sfx: 'Sound volume', timer: 'Question timer', timerSec: 'Timer length', textSpeed: 'Text speed', daynight: 'Day / night cycle', pad: 'Touch movement', full: 'Fullscreen' };
-  const val = (k) => k === 'music' || k === 'sfx' ? '▮'.repeat(Math.round(st[k] * 10)) + '▯'.repeat(10 - Math.round(st[k] * 10)) : k === 'timer' ? (st.timer ? 'On' : 'Off (relaxed)') : k === 'timerSec' ? st.timerSec + 's' : k === 'textSpeed' ? ['', 'Slow', 'Normal', 'Fast', 'Instant'][st.textSpeed] : k === 'daynight' ? (st.daynight === false ? 'Off (always day)' : 'On (real time)') : k === 'pad' ? (st.padStyle === 'dpad' ? '✚ D-pad' : '◉ Thumbstick') : document.fullscreenElement ? 'On' : 'Off';
+  const st = G.settings; const keys = ['music', 'sfx', 'timer', 'timerSec', 'textSpeed', 'daynight', 'full'];
+  const lbl = { music: 'Music volume', sfx: 'Sound volume', timer: 'Question timer', timerSec: 'Timer length', textSpeed: 'Text speed', daynight: 'Day / night cycle', full: 'Fullscreen' };
+  const val = (k) => k === 'music' || k === 'sfx' ? '▮'.repeat(Math.round(st[k] * 10)) + '▯'.repeat(10 - Math.round(st[k] * 10)) : k === 'timer' ? (st.timer ? 'On' : 'Off (relaxed)') : k === 'timerSec' ? st.timerSec + 's' : k === 'textSpeed' ? ['', 'Slow', 'Normal', 'Fast', 'Instant'][st.textSpeed] : k === 'daynight' ? (st.daynight === false ? 'Off (always day)' : 'On (real time)') : document.fullscreenElement ? 'On' : 'Off';
   const change = (k, d) => {
     if (k === 'music' || k === 'sfx') { st[k] = clamp(Math.round((st[k] + d * 0.1) * 10) / 10, 0, 1); audio.setVolume(k, st[k]); }
-    if (k === 'timer') st.timer = !st.timer; if (k === 'daynight') st.daynight = st.daynight === false; if (k === 'pad') { st.padStyle = st.padStyle === 'dpad' ? 'stick' : 'dpad'; G.applyPadStyle?.(); } if (k === 'timerSec') st.timerSec = clamp(st.timerSec + d * 5, 10, 60); if (k === 'textSpeed') st.textSpeed = clamp(st.textSpeed + d, 1, 4);
+    if (k === 'timer') st.timer = !st.timer; if (k === 'daynight') st.daynight = st.daynight === false; if (k === 'timerSec') st.timerSec = clamp(st.timerSec + d * 5, 10, 60); if (k === 'textSpeed') st.textSpeed = clamp(st.textSpeed + d, 1, 4);
     if (k === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
     saveSettings(st); audio.sfx('blip');
   };

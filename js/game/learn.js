@@ -4,7 +4,7 @@ import { G } from './state.js';
 import { ui, fmt } from './ui.js';
 import { esc } from '../core/rng.js';
 import { CONFIG } from '../config.js';
-import { resourceLinks } from '../content/resources.js';
+import { resourceLinks, openLink } from '../content/resources.js';
 import { monsterDataURL } from '../core/sprites.js';
 
 const W = () => G.W;
@@ -51,7 +51,7 @@ export async function learnMore(T) {
       ${sp ? `<h3>Embodied by</h3><div class="lm-mon">${img ? `<img src="${img}" alt="">` : ''}<span><b>${esc(sp.name)}</b> · ${esc(sp.type)} type<br><span class="dim">Catch it to keep this idea close.</span></span></div>` : ''}
       ${links.length ? `<h3>Go deeper (opens your browser)</h3><div class="row lm-links">${links.map((l, i) => `<button data-nav data-act="open" data-arg="${i}">🔗 ${esc(l.name)}</button>`).join('')}</div>` : ''}
       <div class="row"><button data-nav data-act="__close">Done</button></div></div>`,
-    actions: { open: (i) => { const l = links[+i]; if (l && externalOn()) window.open(l.url, '_blank', 'noopener'); } } });
+    actions: { open: (i) => { const l = links[+i]; if (l && externalOn()) openLink(l); } } });
 }
 
 G.learnMore = learnMore; G.termForQuestion = termForQuestion;

@@ -43,7 +43,8 @@ export const events = {
   doorBlocked(w) {
     const m = G.world.map; if (w.kind !== 'gym' || m.cityIdx === undefined) return false;
     if (S().flags['trial' + m.cityIdx]) return false;
-    G.busy++; say([`Hold on, challenger! The Mastery Hall only admits those who pass the *Study Lab Trial*.`, `The Study Lab is just south-west of here.`], 'Hall Assistant').then(() => G.busy--);
+    const dir = buildingDir(m, 'lab', w.x, w.y) || 'somewhere in town';
+    G.busy++; say([`Hold on, challenger! The Mastery Hall only admits those who pass the *Study Lab Trial*.`, `The Study Lab is ${dir}.`], 'Hall Assistant').then(() => G.busy--);
     return true;
   },
   async onEnter(map, prevName) {
@@ -60,7 +61,8 @@ export const events = {
     G.busy--; const pl = G.world.lp[p.i || 0]; if (pl) pl.dir = 'left';
   },
   checkObjective() {
-    const o = objective(); if (o !== G.lastObjective) { if (G.lastObjective !== undefined) ui.toast('★ ' + o, 3600); G.lastObjective = o; }
+    NOHINT = true; const base = objective(); NOHINT = false; // compare without the live direction hint
+    if (base !== G.lastObjective) { if (G.lastObjective !== undefined) ui.toast('★ ' + objective(), 3600); G.lastObjective = base; }
   },
   async wild(p) {
     const m = G.world.map; const rt = m.encounter || Math.min(9, (+G.world.chapter() || 0) + 1); const [lo, hi] = W().routeLevels(rt); const li = R.pick(W().routeLines(rt)); const lvl = R.int(lo, hi);
@@ -134,16 +136,29 @@ async function whiteout() {
   await say([`You hurried back to safety and patched up your team.`, lost ? `You dropped ¤${lost} in the rush...` : '', 'Tip: review your missed questions in the Codex before trying again!']);
 }
 
+// ------------------------------------------------------------ directions (worked out from the real map, since layouts change per world)
+const COMPASS = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
+export function directionTo(fx, fy, tx, ty) {
+  const dx = tx - fx, dy = ty - fy, d = Math.hypot(dx, dy);
+  if (d < 3) return 'right next to you';
+  const ang = (Math.atan2(-dy, dx) * 180) / Math.PI; const name = COMPASS[Math.round(((ang + 360) % 360) / 45) % 8];
+  return `${d < 10 ? 'just ' : ''}to the ${name}`;
+}
+// "to the north-east" from (fx, fy) to the door of building `kind` on `map` (or null if that map has none)
+export function buildingDir(map, kind, fx, fy) { const w = map?.warps?.find((q) => q.door && q.kind === kind); return w ? directionTo(fx, fy, w.x, w.y) : null; }
+let NOHINT = false;
+const hereHint = (mapPred, kind, label) => { if (NOHINT) return ''; const m = G.world?.map; const p = G.world?.lp?.[0]; if (!m || !p || !mapPred(m)) return ''; const d = buildingDir(m, kind, p.x, p.y); return d ? ` (${label} is ${d})` : ''; };
+
 // ------------------------------------------------------------ objective & quests
 export function objective() {
   const s = S(); const w = W(); if (!s) return '';
   if (!s.flags.topic) return 'Choose your field of study at the terminal on your desk.';
-  if (!s.flags.starter) return `Visit ${w.profName}'s lab and choose a partner monster.`;
+  if (!s.flags.starter) return `Visit ${w.profName}'s lab and choose a partner monster.${hereHint((m) => m.id === 'hometown', 'prof', 'the lab')}`;
   for (let i = 0; i < 8; i++) {
     if (s.badges[i]) continue; const c = w.cities[i];
     if (!s.flags['visit' + i]) return `Travel north to ${c.name} (${c.theme}).`;
-    if (!s.flags['trial' + i]) return `Pass the Study Lab Trial in ${c.name}.`;
-    return `Defeat Leader ${c.leader} at the ${c.name} Mastery Hall.`;
+    if (!s.flags['trial' + i]) return `Pass the Study Lab Trial in ${c.name}.${hereHint((m) => m.id === 'city' + i, 'lab', 'the Study Lab')}`;
+    return `Defeat Leader ${c.leader} at the ${c.name} Mastery Hall.${hereHint((m) => m.id === 'city' + i, 'gym', 'the Hall')}`;
   }
   if (!s.champion) { const n = [0, 1, 2, 3].filter((k) => s.flags['elite' + k]).length; return n < 4 ? `Climb the Mastery Summit: defeat the Council (${n}/4).` : `Face Champion ${w.champion.name} at the top of the Summit!`; }
   return `You are a Master of ${w.topic.name}! Drill the Codex to stay sharp.`;

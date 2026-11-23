@@ -27,7 +27,10 @@ G.icons = itemIcon;
 G.autosave = (force) => { if (!G.save || G.title) return; writeSlot(G.slot, G.save); if (CONFIG.ONLINE || CONFIG.CLOUD_SAVES) net.pushSave(G.slot, G.save, force); };
 setInterval(() => G.autosave(), 30000);
 addEventListener('beforeunload', () => G.autosave(true));
-document.addEventListener('visibilitychange', () => { if (document.hidden) G.autosave(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { audio.pause(); G.autosave(true); } else if (document.hasFocus()) audio.unpause(); });
+// stop the music the instant the app loses focus (home button, app switcher, notification shade, another window)
+addEventListener('blur', () => audio.pause()); addEventListener('pagehide', () => audio.pause()); addEventListener('freeze', () => audio.pause());
+addEventListener('focus', () => { if (!document.hidden) audio.unpause(); }); addEventListener('pageshow', () => { if (!document.hidden && document.hasFocus()) audio.unpause(); });
 
 // ------------------------------------------------------------ layout & touch
 const stage = document.getElementById('stage');
@@ -51,8 +54,8 @@ document.querySelectorAll('#touch [data-b]').forEach((b) => {
 });
 // d-pad: slide between directions
 const pad = document.getElementById('dpad');
-// Movement control: thumbstick (default, knob follows your thumb) or classic d-pad — switch in Settings.
-export function applyPadStyle() { if (!pad) return; const stick = G.settings?.padStyle !== 'dpad'; pad.classList.toggle('stick', stick); pad.classList.toggle('cross-pad', !stick); }
+// Movement control: classic cross d-pad.
+export function applyPadStyle() { if (!pad) return; pad.classList.remove('stick'); pad.classList.add('cross-pad'); }
 if (pad) { const dirs = ['up', 'down', 'left', 'right']; const knob = pad.querySelector('.knob');
   const setDir = (e) => { const r = pad.getBoundingClientRect(); let x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2; const lim = r.width * 0.32, len = Math.hypot(x, y);
     if (knob) { const k = len > lim ? lim / len : 1; knob.style.transform = `translate(calc(-50% + ${x * k}px), calc(-50% + ${y * k}px))`; }
@@ -60,7 +63,7 @@ if (pad) { const dirs = ['up', 'down', 'left', 'right']; const knob = pad.queryS
     for (const q of dirs) { input.setTouch(q, q === d); pad.classList.toggle('p' + q[0], q === d); } };
   pad.addEventListener('pointerdown', (e) => { if (editingControls()) return; e.preventDefault(); audio.init(); pad.setPointerCapture(e.pointerId); setDir(e); }); pad.addEventListener('pointermove', (e) => { if (e.buttons && !editingControls()) setDir(e); }); const end = () => { dirs.forEach((d) => { input.setTouch(d, false); pad.classList.remove('p' + d[0]); }); if (knob) knob.style.transform = ''; }; pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end); }
 applyPadStyle(); G.applyPadStyle = applyPadStyle;
-const unlock = () => audio.init(); addEventListener('keydown', unlock); addEventListener('pointerdown', unlock);
+const unlock = () => { if (audio.away && !document.hidden) audio.unpause(); audio.init(); }; addEventListener('keydown', unlock); addEventListener('pointerdown', unlock);
 input.onRunToggle = (p, on) => { audio.sfx(on ? 'select' : 'back'); ui.toast(on ? '🏃 Auto-run ON (double-tap Run to turn off)' : '🚶 Auto-run OFF', 1600); document.querySelector('#touch [data-b="run"]')?.classList.toggle('on', input.runLock[0]); };
 addEventListener('gamepadconnected', (e) => ui.toast(`🎮 Controller ${e.gamepad.index + 1} connected`));
 
@@ -110,12 +113,27 @@ function slotLabel(s, i) {
   const tp = topics().find((t) => t.id === s.topic); const h = Math.floor(s.playtime / 3600), m = Math.floor((s.playtime % 3600) / 60);
   return `Slot ${i + 1} — <b>${esc(s.players.map((p) => p.name).join(' & '))}</b> · ${esc(tp ? tp.name : 'No topic yet')} · ${badgeCount(s)} badges · ${h}h${String(m).padStart(2, '0')}`;
 }
+// Delete saves (with two warnings). Also removes the cloud backup when logged in, so it doesn't come back on the next sync.
+async function manageSaves() {
+  for (;;) {
+    const slots = listSlots(); if (!slots.some(Boolean)) { ui.toast('No saves left.'); return; }
+    const pick = await ui.choose('Manage saves — pick a save to delete', slots.map((s, i) => ({ html: s ? `🗑 ${slotLabel(s, i)}` : `Slot ${i + 1} — empty`, disabled: !s })), { cls: 'slots' });
+    if (pick < 0) return;
+    const s = slots[pick]; const who = s.players.map((p) => p.name).join(' & ');
+    const cloud = net.authed ? ' Its cloud backup on your account will be deleted too.' : '';
+    if (!(await ui.confirm(`⚠ Delete *Slot ${pick + 1}* (${who}, ${badgeCount(s)} badges)?${cloud}`))) continue;
+    if (!(await ui.confirm(`This can NOT be undone. All progress, monsters and badges in Slot ${pick + 1} will be gone forever. Delete it?`))) continue;
+    deleteSlot(pick); localStorage.setItem('hakma.deleted.' + pick, String(Date.now())); audio.sfx('back');
+    if (net.authed) { try { await net.api('DELETE', '/api/saves/' + pick); } catch { ui.toast('Deleted here, but the cloud copy could not be removed yet — it will stay deleted on this device.', 5000); } }
+    ui.toast(`Slot ${pick + 1} deleted.`);
+  }
+}
 async function titleMenu() {
   if (!G.title) return; ui.closeAll();
   const slots = listSlots(); const any = slots.some(Boolean);
   const items = [];
   if (any) items.push(['continue', '▶ Continue']);
-  items.push(['new', '✚ New Game']); if (CONFIG.ONLINE) items.push(['online', net.authed ? `👥 Online: ${esc(net.user.username)}` : '👥 Log in / Create account']); else if (CONFIG.CLOUD_SAVES) items.push(['online', net.authed ? `☁ Account: ${esc(net.user.username)}` : '☁ Log in / Create account']); items.push(['settings', '⚙ Settings'], ['help', '? Help & Legal']);
+  items.push(['new', '✚ New Game']); if (any) items.push(['manage', '🗂 Manage saves']); if (CONFIG.ONLINE) items.push(['online', net.authed ? `👥 Online: ${esc(net.user.username)}` : '👥 Log in / Create account']); else if (CONFIG.CLOUD_SAVES) items.push(['online', net.authed ? `☁ Account: ${esc(net.user.username)}` : '☁ Log in / Create account']); items.push(['settings', '⚙ Settings'], ['help', '? Help & Legal']);
   if (installEvt) items.push(['install', '⬇ Install app']);
   else if (/iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone) items.push(['ios', '⬇ Install on iPhone/iPad']);
   const c = await ui.choose(null, items.map(([, h]) => ({ html: h })), { cls: 'titlemenu', cancel: false });
@@ -123,6 +141,7 @@ async function titleMenu() {
   const k = items[c][0];
   if (k === 'continue') { const pick = await ui.choose('Choose a save', slots.map((s, i) => ({ html: slotLabel(s, i), disabled: !s })), { cls: 'slots' }); if (pick >= 0) return startGame(pick, readSlot(pick)); }
   if (k === 'new') return newGameFlow();
+  if (k === 'manage') await manageSaves();
   if (k === 'online') await netui.friends();
   if (k === 'settings') await menus.settings();
   if (k === 'help') await menus.help();

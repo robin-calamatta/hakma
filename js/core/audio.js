@@ -89,9 +89,19 @@ function genSong(seed, moodKey) {
 }
 
 class Chip {
+  // Silence everything immediately when the app loses focus / goes to the background; pick up again when it's back.
+  pause() {
+    this.away = true; if (!this.ctx) return;
+    try { const t = this.ctx.currentTime; this.master.gain.cancelScheduledValues(t); this.master.gain.setValueAtTime(0, t); } catch {}
+    this.ctx.suspend?.().catch(() => {});
+  }
+  unpause() {
+    if (!this.away) return; this.away = false; if (!this.ctx) return;
+    this.ctx.resume?.().then(() => { const t = this.ctx.currentTime; this.master.gain.cancelScheduledValues(t); this.master.gain.setValueAtTime(0, t); this.master.gain.linearRampToValueAtTime(0.5, t + 0.25); if (this.cur) this.cur.t = Math.max(this.cur.t, t + 0.05); }).catch(() => {});
+  }
   constructor() { this.ctx = null; this.vol = { music: 0.55, sfx: 0.7 }; this.cur = null; this.key = null; this.muted = false; }
   init() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    if (this.ctx) { if (this.ctx.state === 'suspended' && !this.away) this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     const ctx = this.ctx = new AC();
     this.master = ctx.createGain(); this.master.gain.value = 0.5; this.master.connect(ctx.destination);
@@ -108,6 +118,7 @@ class Chip {
     for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
     this.noise = buf;
     this.timer = setInterval(() => this.tick(), 25);
+    if (this.away) this.pause();
     if (this.pending) { const p = this.pending; this.pending = null; this.play(p.key, p.seed, p.mood); }
   }
   setVolume(kind, v) { this.vol[kind] = v; if (kind === 'music' && this.mg) this.mg.gain.value = v; if (kind === 'sfx' && this.sg) this.sg.gain.value = v; }
