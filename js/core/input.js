@@ -1,16 +1,16 @@
 // Unified input: keyboard, up to 4 gamepads, and on-screen touch controls, mapped to up to 4 local players.
-const BTN = ['up', 'down', 'left', 'right', 'a', 'b', 'start'];
+const BTN = ['up', 'down', 'left', 'right', 'a', 'b', 'start', 'run'];
 
 const SOLO_KEYS = {
   ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
   KeyZ: 'a', Space: 'a', Enter: 'a', KeyF: 'a', KeyE: 'a',
-  KeyX: 'b', Escape: 'b', Backspace: 'b', KeyG: 'b', KeyQ: 'b', ShiftLeft: 'b',
+  KeyX: 'b', Escape: 'b', Backspace: 'b', KeyG: 'b', KeyQ: 'b', ShiftLeft: 'run', ShiftRight: 'run', KeyC: 'run',
   Tab: 'start', KeyM: 'start', KeyP: 'start',
 };
 // When 2+ local players share a keyboard
 const MULTI_KEYS = [
-  { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', KeyF: 'a', KeyG: 'b', Tab: 'start', KeyR: 'start', Escape: 'b', Enter: 'a', Space: 'a' },
-  { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Period: 'a', Comma: 'b', Slash: 'start', Numpad0: 'a', NumpadDecimal: 'b' },
+  { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', KeyF: 'a', KeyG: 'b', Tab: 'start', KeyR: 'start', Escape: 'b', Enter: 'a', Space: 'a', ShiftLeft: 'run', KeyH: 'run' },
+  { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Period: 'a', Comma: 'b', Slash: 'start', Numpad0: 'a', NumpadDecimal: 'b', ShiftRight: 'run', Semicolon: 'run' },
   {}, {},
 ];
 
@@ -24,6 +24,7 @@ class Input {
     this.padOwner = {}; // gamepad index -> player slot
     this.repeat = [0, 1, 2, 3].map(() => ({ dir: null, t: 0 }));
     this.textMode = false; // true while typing into an <input>
+    this.runLock = [false, false, false, false]; this.lastRun = [0, 0, 0, 0]; this.clock = 0; this.onRunToggle = null;
     this.lastDevice = 'keyboard';
     addEventListener('keydown', (e) => {
       if (this.textMode) return;
@@ -59,16 +60,20 @@ class Input {
       if (B(14) || ax < -0.5) s.left = true;
       if (B(15) || ax > 0.5) s.right = true;
       if (B(0)) s.a = true;
-      if (B(1) || B(2)) s.b = true;
+      if (B(1)) s.b = true;
+      if (B(2) || B(5) || B(7)) s.run = true;
       if (B(9) || B(8) || B(3)) s.start = true;
       if (gp.buttons.some((b) => b.pressed)) this.lastDevice = 'gamepad';
     }
+    this.clock += dt;
     for (let p = 0; p < 4; p++) {
+      if (this.pressed(p, 'run')) { if (this.clock - this.lastRun[p] < 0.38) { this.runLock[p] = !this.runLock[p]; this.lastRun[p] = -9; this.onRunToggle?.(p, this.runLock[p]); } else this.lastRun[p] = this.clock; }
       const d = this.dir(p); const r = this.repeat[p];
       if (d !== r.dir) { r.dir = d; r.t = 0; r.fire = !!d; } else if (d) { r.t += dt; r.fire = r.t > 0.32 && ((r.t - 0.32) % 0.085) < dt; } else r.fire = false;
     }
   }
   held(p, b) { return !!this.state[p][b]; }
+  running(p) { return this.runLock[p] || this.held(p, 'run') || this.held(p, 'b'); }
   pressed(p, b) { return !!this.state[p][b] && !this.prev[p][b]; }
   anyPressed(b) { for (let p = 0; p < 4; p++) if (this.pressed(p, b)) return p; return -1; }
   dir(p) { const s = this.state[p]; return s.up ? 'up' : s.down ? 'down' : s.left ? 'left' : s.right ? 'right' : null; }

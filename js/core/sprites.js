@@ -204,16 +204,16 @@ export const BIOMES = {
   neon:    { g: '#1f2446', g2: '#1a1f3e', path: '#2e3566', path2: '#283060', tall: '#22c6a8', tree: '#3b4176', tree2: '#2a2f5a', trunk: '#4cf0ff', water: '#22d8ff', water2: '#9ff3ff', style: 'tower', flower: ['#ff4fd8', '#4cf0ff', '#ffe14c'], sky: ['#0d1030', '#3a1f6a'], hill: '#2a2f60', mood: 'neon' },
   interior:{ g: '#d8c09a', g2: '#c8ad84', path: '#b84a4a', path2: '#a03c3c', tall: '#3e9b31', tree: '#2f8a3a', tree2: '#1f6128', trunk: '#6b4a2b', water: '#3f95e6', water2: '#6cb6f2', style: 'round', flower: ['#ff5d73'], sky: ['#c8d8f0', '#ffffff'], hill: '#a0b0c0', mood: 'calm' },
 };
-export const T = { GRASS: 0, PATH: 1, TALL: 2, TREE: 3, WATER: 4, FLOWER: 5, FENCE: 6, SIGN: 7, DOOR: 8, BWALL: 9, ROOF: 10, FLOOR: 11, IWALL: 12, COUNTER: 13, PC: 14, BED: 15, DESK: 16, SHELF: 17, RUG: 18, MAT: 19, TABLE: 20, PLANT: 21, ROCK: 22, GYMFLOOR: 24, STATUE: 25, BARRIER: 26, STAIRS: 27 };
-export const SOLID = new Set([3, 4, 6, 7, 9, 10, 12, 13, 14, 15, 16, 17, 20, 21, 22, 25, 26]);
+export const T = { GRASS: 0, PATH: 1, TALL: 2, TREE: 3, WATER: 4, FLOWER: 5, FENCE: 6, SIGN: 7, DOOR: 8, BWALL: 9, ROOF: 10, FLOOR: 11, IWALL: 12, COUNTER: 13, PC: 14, BED: 15, DESK: 16, SHELF: 17, RUG: 18, MAT: 19, TABLE: 20, PLANT: 21, ROCK: 22, GYMFLOOR: 24, STATUE: 25, BARRIER: 26, STAIRS: 27, CUTTREE: 28, CRACKROCK: 29 };
+export const SOLID = new Set([3, 4, 6, 7, 9, 10, 12, 13, 14, 15, 16, 17, 20, 21, 22, 25, 26, 28, 29]);
 
 export function tileAtlas(biomeKey, frame) {
   const key = 'tiles' + biomeKey + frame; if (cache.has(key)) return cache.get(key);
-  const B = BIOMES[biomeKey] || BIOMES.meadow; const [c, g] = mk(16 * 28, 16);
+  const B = BIOMES[biomeKey] || BIOMES.meadow; const [c, g] = mk(16 * 30, 16);
   const r = rng(hash(biomeKey));
   const px = (x, y, col, w = 1, h = 1) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
   const ground = (ox) => { px(ox, 0, B.g, 16, 16); for (let i = 0; i < 10; i++) px(ox + r.int(0, 15), r.int(0, 15), B.g2); if (biomeKey === 'neon') { px(ox, 0, '#262c55', 16, 1); px(ox, 0, '#262c55', 1, 16); } };
-  for (let code = 0; code < 28; code++) {
+  for (let code = 0; code < 30; code++) {
     const ox = code * 16;
     switch (code) {
       case T.GRASS: ground(ox); break;
@@ -242,6 +242,8 @@ export function tileAtlas(biomeKey, frame) {
       case T.GYMFLOOR: px(ox, 0, '#3a3f5a', 16, 16); px(ox, 0, '#4a5070', 8, 8); px(ox + 8, 8, '#4a5070', 8, 8); break;
       case T.STATUE: px(ox, 0, '#3a3f5a', 16, 16); px(ox + 3, 11, '#8a8a96', 10, 5); px(ox + 5, 2, '#b0b0bc', 6, 9); px(ox + 6, 0, '#d0d0da', 4, 4); px(ox + 6, 4, '#ffd23f', 4, 2); break;
       case T.BARRIER: px(ox, 0, '#3a3f5a', 16, 16); px(ox, 0, frame ? '#ff4fd880' : '#ff4fd850', 16, 16); px(ox, 7, '#ff9ff0', 16, 2); break;
+      case T.CUTTREE: ground(ox); px(ox + 7, 10, B.trunk, 2, 5); px(ox + 3, 2, shade(B.tree, 0.15), 10, 9); px(ox + 5, 0, shade(B.tree, 0.15), 6, 3); px(ox + 4, 3, shade(B.tree, 0.35), 3, 2); px(ox + 9, 6, B.tree2, 4, 4); px(ox + 2, 5, B.tree, 1, 4); px(ox + 13, 5, B.tree2, 1, 4); px(ox + 6, 14, '#00000033', 5, 2); px(ox + 4, 8, '#ffffff55', 1, 1); px(ox + 11, 3, '#ffffff55', 1, 1); break;
+      case T.CRACKROCK: ground(ox); px(ox + 1, 3, '#6a6a76', 14, 12); px(ox + 2, 2, '#8a8a96', 12, 4); px(ox + 3, 1, '#a0a0ac', 9, 3); px(ox + 4, 2, '#c4c4ce', 4, 2); px(ox + 1, 13, '#4a4a56', 14, 2); px(ox + 7, 3, '#2a2a36', 1, 4); px(ox + 6, 7, '#2a2a36', 1, 3); px(ox + 8, 7, '#2a2a36', 2, 1); px(ox + 9, 8, '#2a2a36', 1, 4); px(ox + 4, 9, '#2a2a36', 2, 1); break;
       case T.STAIRS: px(ox, 0, '#e0caa0', 16, 16); for (let i = 0; i < 4; i++) px(ox + 1, i * 4, i % 2 ? '#8a6a4a' : '#aa8a6a', 14, 4); break;
     }
   }
@@ -308,6 +310,7 @@ export function itemIcon(id) {
   if (cubes[id]) { px(3, 3, OUT, 10, 10); px(4, 4, cubes[id], 8, 8); px(4, 4, '#ffffff', 3, 2); px(7, 7, OUT, 2, 2); px(4, 8, shade(cubes[id], -0.35), 8, 4); }
   else if (id.includes('tonic')) { const col = id === 'tonic' ? '#3ddc84' : id === 'supertonic' ? '#4aa8ff' : '#b36bff'; px(6, 1, OUT, 4, 3); px(4, 4, OUT, 8, 11); px(5, 5, col, 6, 9); px(5, 5, '#ffffff99', 2, 5); px(7, 2, '#d0d0d0', 2, 2); }
   else if (id === 'revive') { px(7, 1, '#ffd23f', 2, 14); px(1, 7, '#ffd23f', 14, 2); px(4, 4, '#fff6b0', 8, 8); px(6, 6, '#ffffff', 4, 4); }
+  else if (id.startsWith('tm_')) { const col = TYPES[id.slice(3)]?.color || '#ccc'; px(2, 2, OUT, 12, 12); px(3, 1, OUT, 10, 14); px(3, 3, col, 10, 10); px(4, 2, col, 8, 12); px(6, 6, '#14101c', 4, 4); px(7, 7, '#ffffff', 2, 2); px(4, 3, '#ffffffaa', 3, 2); }
   else if (id === 'shard') { px(6, 1, OUT, 4, 14); px(4, 4, OUT, 8, 8); px(7, 2, '#9ff3ff', 2, 12); px(5, 5, '#4cf0ff', 6, 6); px(6, 5, '#ffffff', 1, 3); }
   else { px(3, 3, '#ccc', 10, 10); }
   iconCache[id] = c.toDataURL(); return iconCache[id];

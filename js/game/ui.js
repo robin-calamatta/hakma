@@ -51,7 +51,7 @@ export const ui = {
     lines = lines.filter(Boolean);
     return new Promise((res) => {
       let i = 0, shown = 0, full = '', timer = null;
-      const l = this.layer(`<div class="dialog ${opt.cls || ''}">${opt.name ? `<div class="dname">${esc(opt.name)}</div>` : ''}<div class="dtext"></div><div class="dmore">▼</div></div>`, { onBack: null, handle: () => { if (input.anyPressed('a') >= 0 || input.anyPressed('b') >= 0) adv(); return true; } });
+      const l = this.layer(`<div class="dialog ${opt.cls || ''}">${opt.name ? `<div class="dname">${esc(opt.name)}</div>` : ''}<div class="dtext"></div><div class="dmore">▼</div></div>`, { onBack: null, onClose: () => res(), handle: () => { if (input.anyPressed('a') >= 0 || input.anyPressed('b') >= 0) adv(); return true; } });
       const txt = l.el.querySelector('.dtext'); const more = l.el.querySelector('.dmore');
       const speed = [0, 40, 22, 10, 1][G.settings?.textSpeed ?? 2] || 22;
       const show = () => {
@@ -70,8 +70,8 @@ export const ui = {
   choose(prompt, options, opt = {}) {
     return new Promise((res) => {
       const items = options.map((o, i) => `<button data-nav data-i="${i}" ${o && o.disabled ? 'disabled' : ''}>${typeof o === 'string' ? esc(o) : o.html || esc(o.label)}</button>`).join('');
-      const l = this.layer(`${prompt ? `<div class="dialog"><div class="dtext">${fmt(esc(prompt))}</div></div>` : ''}<div class="choice ${opt.cls || ''}">${items}</div>`, { onBack: opt.cancel === false ? null : () => { l.close(); res(-1); }, start: opt.start || 0, cols: opt.cols });
-      l.el.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); l.close(); res(+b.dataset.i); }));
+      const l = this.layer(`${prompt ? `<div class="dialog"><div class="dtext">${fmt(esc(prompt))}</div></div>` : ''}<div class="choice ${opt.cls || ''}">${items}</div>`, { onBack: opt.cancel === false ? null : () => { l.close(); res(-1); }, start: opt.start || 0, cols: opt.cols, onClose: () => res(-1) });
+      l.el.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); res(+b.dataset.i); l.close(); }));
     });
   },
   async confirm(text) { return (await this.choose(text, ['Yes', 'No'])) === 0; },
@@ -79,11 +79,11 @@ export const ui = {
   panel({ title, render, actions = {}, cls = '', cols, onLR, wide }) {
     return new Promise((res) => {
       const shell = (body) => `<div class="panel ${wide ? 'wide' : ''} ${cls}"><div class="ptitle"><span>${title}</span><button class="x" data-act="__close">✕</button></div><div class="pbody">${body}</div></div>`;
-      const l = this.layer(shell(render()), { cols, onLR: onLR && ((d) => onLR(d, rerender)), onBack: () => { l.close(); res(); } });
+      const l = this.layer(shell(render()), { cols, onLR: onLR && ((d) => onLR(d, rerender)), onBack: () => { l.close(); res(); }, onClose: () => res() });
       const rerender = () => { if (!l.closed) { l.refresh(shell(render())); wire(); } };
       const wire = () => l.el.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async (e) => {
         e.stopPropagation(); const a = b.dataset.act; if (a === '__close') { l.close(); res(); return; }
-        const fn = actions[a]; if (fn) { const r = await fn(b.dataset.arg, b, rerender, l); if (r === 'close') { l.close(); res(); } else rerender(); }
+        const fn = actions[a]; if (fn) { const r = await fn(b.dataset.arg, b, rerender, l); if (r === 'close') { res(); l.close(); } else rerender(); }
       }));
       wire(); l.rerender = rerender;
     });
@@ -118,9 +118,14 @@ export const ui = {
         <div class="qopts">${q.opts.map((o, i) => `<button data-nav data-i="${i}"><span class="k">${keys[i] || ''}</span>${esc(o)}</button>`).join('')}</div>
         ${limit ? '<div class="qtimer"><div></div></div>' : ''}
         <div class="qfeedback hidden"></div></div>`;
-      const t0 = performance.now(); let done = false, raf; const initHeld = new Set(input.keys);
+      const t0 = performance.now(); let done = false, raf, lsel = false, learning = false, wantFinish = false; let term = null; const initHeld = new Set(input.keys);
       const l = this.layer(html, { onBack: null, cols: q.opts.length === 4 && opt.grid !== false ? 2 : 1, handle: (L) => {
-        if (done) { if (input.anyPressed('a') >= 0 || input.anyPressed('b') >= 0) finish(); return true; }
+        if (done) {
+          const lb = l.el.querySelector('.lmore');
+          if (lb) { const d = input.nav(); if (d) { lsel = !lsel; lb.classList.toggle('sel', lsel); l.el.querySelector('.cont')?.classList.toggle('sel', !lsel); audio.sfx('blip'); } }
+          if (input.anyPressed('a') >= 0) { if (lb && lsel) openLearn(); else finish(); } else if (input.anyPressed('b') >= 0) finish();
+          return true;
+        }
         for (let i = 0; i < 4; i++) { const c = 'Digit' + (i + 1); const down = input.keys.has(c) || (input.frameTaps && input.frameTaps.has(c)); if (!down) initHeld.delete(c); else if (!initHeld.has(c) && q.opts[i] !== undefined) { pick(i); return true; } }
         return false;
       } });
@@ -136,10 +141,13 @@ export const ui = {
         audio.sfx(correct ? (quick ? 'quick' : 'correct') : 'wrong');
         l.el.querySelector('.quiz').classList.add('answered'); const fb = l.el.querySelector('.qfeedback'); fb.classList.remove('hidden');
         fb.innerHTML = correct ? `<b class="ok">${quick ? '⚡ Quick Recall!' : '✔ Correct!'}</b> <span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>` : `<b class="bad">${i < 0 ? '⏱ Time\'s up!' : '✘ Not quite.'}</b> Answer: <b>${esc(q.a)}</b><br><span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>`;
+        try { term = G.termForQuestion && opt.learn !== false ? G.termForQuestion(q) : null; } catch { term = null; }
+        if (term) { const lb = document.createElement('button'); lb.className = 'lmore'; lb.innerHTML = '📖 Learn more: ' + esc(term.term); lb.addEventListener('click', (e) => { e.stopPropagation(); openLearn(); }); fb.appendChild(lb); }
         fb.addEventListener('click', finish);
-        if (opt.autoClose) setTimeout(finish, correct ? 900 : 2600);
+        if (opt.autoClose) setTimeout(finish, correct ? 900 : (term ? 4200 : 2600));
       };
-      const finish = () => { if (l.closed) return; l.close(); res(result); };
+      const finish = () => { if (l.closed) return; if (learning) { wantFinish = true; return; } res(result); l.close(); };
+      const openLearn = async () => { if (learning || !term || !G.learnMore) return; learning = true; await G.learnMore(term); learning = false; lsel = false; l.el.querySelector('.lmore')?.classList.remove('sel'); l.el.querySelector('.cont')?.classList.add('sel'); if (wantFinish) finish(); };
       l.el.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); if (!done) pick(+b.dataset.i); else finish(); }));
     });
   },

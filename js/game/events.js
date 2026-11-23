@@ -1,4 +1,7 @@
 // Interaction scripts, quests and story flow.
+import { FIELD_SKILLS } from './state.js';
+import { T } from '../core/sprites.js';
+import { flyPoint } from './maps.js';
 import { G, ITEMS, makeMon, healAll, addMon, monName, maxHp, newPlayer, badgeCount, addCodex, recordAnswer } from './state.js';
 import { getWorld, topics } from './content.js';
 import { ui, fmt } from './ui.js';
@@ -19,6 +22,7 @@ const say = (lines, name) => ui.say(lines, { name });
 const W = () => G.W, S = () => G.save;
 
 function termLine(id) { const t = W().terms.find((x) => x.id === id); return t ? `*${t.term}* — ${t.def}` : ''; }
+async function offerMore(id) { const t = W().terms.find((x) => x.id === id); if (!t || !(t.ex || []).length || !G.learnMore) return; if ((await ui.choose('', ['📖 More examples', 'Thanks!'], { cols: 2 })) === 0) await G.learnMore(t); }
 function learn(id) { if (id && addCodex(S(), id)) ui.toast('📘 Codex updated'); }
 function autosave() { G.autosave?.(); }
 
@@ -59,6 +63,26 @@ export const events = {
     const r = await runBattle({ kind: 'wild', enemies: [{ sp: W().speciesFor(li, lvl), lvl }], qci: G.world.chapter(), biome: m.biome, music: 'battle', seed: W().id + m.id });
     G.world.noEnc = 4; G.busy--;
     await afterBattle(r);
+  },
+  async fieldObstacle(tile, x, y, pi) {
+    G.busy++;
+    try {
+      const cut = tile === T.CUTTREE; const key = cut ? 'cut' : 'smash'; const sk = FIELD_SKILLS[key]; const nth = ['1st', '2nd', '3rd', '4th', '5th'][sk.badge];
+      if (!S().skills[key]) { await say(cut ? ['A thick sapling blocks the way.', `A monster using *${sk.name}* could cut it down. The ${sk.disc} is awarded by the ${nth} Mastery Hall Leader.`] : ['A huge cracked boulder blocks the way.', `A monster using *${sk.name}* could shatter it. The ${sk.disc} is awarded by the ${nth} Mastery Hall Leader.`]); return; }
+      if (!(await ui.confirm(cut ? `This sapling could be cut down. Use ${sk.name}?` : `This boulder is cracked. Use ${sk.name}?`))) return;
+      const p = S().players[pi] || S().players[0]; const m = p.party.find((q) => q.hp > 0) || p.party[0];
+      await say(`${m ? monName(W(), m) : p.name} used *${sk.name}*!`);
+      audio.sfx(cut ? 'hit' : 'super'); G.world.puff?.(x, y, cut ? '#5aae40' : '#a0a0ac');
+      const mid = G.world.map.id; (S().cleared[mid] = S().cleared[mid] || []).push(x + ',' + y);
+      const ob = (G.world.map.obstacles || []).find((o) => o[0] === x && o[1] === y); G.world.map.set(x, y, ob ? ob[3] : T.GRASS); G.world.rebake();
+      autosave();
+    } finally { G.busy--; }
+  },
+  async fly(mapId) {
+    const [x, y] = flyPoint(W(), mapId); const name = mapId === 'hometown' ? 'Origin Town' : W().cities[+mapId.slice(4)].name;
+    const p = S().players[0]; const m = p.party.find((q) => q.hp > 0) || p.party[0];
+    await say(`${m ? monName(W(), m) : p.name} used *Soar*! Flying to ${name}…`);
+    audio.sfx('evolve'); await G.world.warp(mapId, x, y, 'down');
   },
   checkSight(lp) {
     for (const o of G.world.objs) {
@@ -139,7 +163,7 @@ const handlers = {
   async npc(o) {
     if (o.tips && o.tips.length) {
       o.ti = (o.ti || 0); const id = o.tips[o.ti % o.tips.length]; o.ti++;
-      await say([LEAD[(o.i + o.ti) % LEAD.length], termLine(id)], o.name); learn(id); return;
+      await say([LEAD[(o.i + o.ti) % LEAD.length], termLine(id)], o.name); learn(id); await offerMore(id); return;
     }
     await say(o.lines || ['Hello there!'], o.name);
   },
@@ -148,9 +172,22 @@ const handlers = {
     const it = ITEMS[o.item]; S().bag[o.item] = (S().bag[o.item] || 0) + (o.count || 1); S().taken[o.key] = 1; audio.sfx('item');
     await say(`Found ${o.count > 1 ? o.count + '× ' : 'a '}*${it.name}*!`);
   },
+  async partner() {
+    const w = W(), s = S(); const m = G.world.followMon(); if (!m) return; const sp = w.species[m.sp]; const name = monName(w, m);
+    const f = G.world.fol, p = G.world.lp[0]; if (f) f.dir = { up: 'down', down: 'up', left: 'right', right: 'left' }[p.dir];
+    const hpPct = m.hp / maxHp(w, m); audio.sfx('select');
+    if (hpPct < 0.35) { G.world.emote('…'); await say(`${name} looks worn out. A Mend Center would perk it right up.`); return; }
+    const k = (s.partnerTalks = (s.partnerTalks || 0) + 1);
+    if (sp.termId && k % 3 === 1) {
+      G.world.emote('💡'); const t = w.terms.find((x) => x.id === sp.termId);
+      await say([`${name} tugs at your sleeve. It wants to show you something it knows!`, termLine(sp.termId)]); learn(sp.termId); if (t) await offerMore(t.id); return;
+    }
+    const moods = [['♥', `${name} nuzzles up against you happily.`], ['♪', `${name} is humming a little chiptune.`], ['!', `${name} perks up — it\'s ready for the next challenge!`], ['☺', `${name} looks proud of how far you\'ve come together.`], ['?', `${name} is curious about everything around here.`], ['zZ', `${name} yawns. Learning is tiring work!`]];
+    const [e, line] = moods[(k + hash(m.uid)) % moods.length]; G.world.emote(e); await say(`${line} (Lv ${m.lvl} · ${TYPES[sp.type]?.name || sp.type} type)`);
+  },
   async note(o) {
     S().taken[o.key] = 1; audio.sfx('item'); learn(o.term);
-    await say(['You found a lost note!', termLine(o.term)]);
+    await say(['You found a lost note!', termLine(o.term)]); await offerMore(o.term);
     const r = G.world.map.noteRoute; const n = [0, 1, 2].filter((k) => S().taken[`r${r}n${k}`]).length;
     if (n >= 3 && !S().flags['notes' + r]) { S().flags['notes' + r] = 1; S().bag.shard = (S().bag.shard || 0) + 1; S().money += 300; audio.sfx('badge'); await say(['All 3 lost notes on this route recovered!', 'Reward: *Insight Shard* and ¤300.']); }
     else await say(`(${n}/3 notes found on this route.)`);
@@ -185,6 +222,7 @@ const handlers = {
     if (!yes) return;
     const mon = makeMon(w, sp.id, 5); addMon(s, pi, mon); s.seen[sp.id] = 1; s.caught[sp.id] = 1; audio.sfx('catch');
     await say(`${p.name} received *${sp.name}*!`);
+    if (pi === 0 && s.follower === undefined) { s.follower = mon.uid; G.world.initFollower(); G.world.emote('♥'); await say(`${sp.name} hops out of its capsule and follows you around! (Change your walking partner from the Team menu.)`); }
     if (s.players.every((q) => q.party.length)) {
       s.flags.starter = 1; s.bag.cube = Math.max(s.bag.cube || 0, 5);
       await say([`A fine choice! ${sp.name} embodies *${sp.concept}*.`, 'Take these Capture Cubes. Weaken wild monsters, then answer the lock-on question to catch them.', 'Press START (Tab / ☰) any time for your menu: team, bag, Codex, quests and more.', `Now head north through Route 1 toward ${w.cities[0].name}. Good luck!`], w.profName);
@@ -246,6 +284,9 @@ const handlers = {
       s.badges[i] = true; audio.sfx('badge'); s.bag.shard = (s.bag.shard || 0) + 2;
       await say([`Incredible. You've mastered ${c.theme}.`, `Take the *${c.badge}* as proof!`], title);
       await menus.badgeCeremony(i);
+      const sk = Object.entries(FIELD_SKILLS).find(([, v]) => v.badge === i);
+      if (sk) { s.skills[sk[0]] = true; audio.sfx('item'); await say([`Take this too: the *${sk[1].disc}*!`, `Your monsters can now use *${sk[1].name}*. ${sk[1].desc}`, sk[0] === 'fly' ? 'Open the Region Map from your menu and choose a city to Soar there.' : 'Face the obstacle and press A to use it.'], title); }
+      const tm = 'tm_' + c.type; if (ITEMS[tm]) { s.bag[tm] = (s.bag[tm] || 0) + 1; await say(`And a Technique Disc: *${ITEMS[tm].move}*! Teach it to a monster from your Bag — discs can be reused.`, title); }
       const key = c.terms.slice(0, 3).map((t) => `• ${t.term}`).join('\n');
       await say([`Before you go, the core ideas of ${c.theme}:\n${key}`, `I'm also giving you 2 Insight Shards. ${w.cities[i + 1] ? `Next up: ${w.cities[i + 1].name}, where you'll study ${w.cities[i + 1].theme}.` : 'Only the Mastery Summit remains!'}`], title);
     }

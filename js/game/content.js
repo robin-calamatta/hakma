@@ -1,6 +1,7 @@
 // Turns a topic pack (plain data) into a playable world: species, stats, moves, question pools, trainers.
 import { TOPICS } from '../content/index.js';
 import { GEN } from '../content/generators.js';
+import { EXAMPLES } from '../content/examples/index.js';
 import { hash, rng, R, shuffle, clamp } from '../core/rng.js';
 
 export const BIOME_ORDER = ['meadow', 'coast', 'forest', 'desert', 'snow', 'volcano', 'crystal', 'neon'];
@@ -18,6 +19,7 @@ export function getWorld(topicId) {
 }
 
 function buildWorld(t) {
+  const EX = EXAMPLES[t.id] || {};
   const W = { topic: t, id: t.id, species: {}, lines: [], cities: [], qIndex: {}, terms: [], recent: [] };
   // ---- species: hand-made lines + one generated line per glossary term (~150 species per world)
   const mons = t.mons.map((m) => [...m]).concat(termLines(t));
@@ -50,7 +52,7 @@ function buildWorld(t) {
   // ---- cities, terms, questions
   t.cities.forEach((c, ci) => {
     const city = { ...c, ci, pool: [], terms: [], gen: c.gen || [] };
-    (c.terms || []).forEach(([term, def], k) => { const T = { id: `t${ci}.${k}`, term, def, ci }; city.terms.push(T); W.terms.push(T); });
+    (c.terms || []).forEach(([term, def], k) => { const T = { id: `t${ci}.${k}`, term, def, ci, ex: (EX[term] || []) }; city.terms.push(T); W.terms.push(T); });
     (c.qs || []).forEach((q, k) => { const Q = { id: `q${ci}.${k}`, q: q[0], a: q[1], wrong: q.slice(2, -1).filter(Boolean), expl: q[q.length - 1], ci }; city.pool.push(Q); W.qIndex[Q.id] = Q; });
     W.cities.push(city);
   });

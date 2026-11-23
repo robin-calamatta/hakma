@@ -4,8 +4,10 @@ import { view } from '../core/view.js';
 import { getMap } from './maps.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
+import { monsterCanvas } from '../core/sprites.js';
 import { tileAtlas, personSheet, personPalette, DIR_ROW, SOLID, T, drawBuilding, drawObject, BIOMES } from '../core/sprites.js';
 import { TYPES } from '../content/types.js';
+import { bakeMap, tallTree, drawShore, drawLighting, dayPhase, ANIMATED } from '../core/scenery.js';
 import { hash, R, clamp } from '../core/rng.js';
 import { ui } from './ui.js';
 
@@ -14,12 +16,17 @@ const DX = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const PEOPLE = new Set(['npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
 
 export class World {
-  constructor() { this.t = 0; this.cam = { x: 0, y: 0 }; this.lp = []; this.objs = []; this.noEnc = 0; this.bumpT = 0; this.peerDraw = {}; }
+  puff(x, y, col) { for (let i = 0; i < 22; i++) { const a = Math.random() * 6.28, v = 20 + Math.random() * 50; this.fx.push({ x: x * 16 + 8, y: y * 16 + 8, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, life: 0.5 + Math.random() * 0.4, c: Math.random() < 0.4 ? '#ffffff' : col }); } }
+  constructor() { this.fx = []; this.t = 0; this.cam = { x: 0, y: 0 }; this.lp = []; this.objs = []; this.noEnc = 0; this.bumpT = 0; this.peerDraw = {}; }
   chapter() { const c = this.map?.ci; return c === 'final' ? 'final' : c ?? 0; }
   load(mapId, spots) {
     const W = G.W, S = G.save; const m = getMap(W, mapId); this.map = m; S.map = mapId;
+    // field-skill obstacles: restore, then remove the ones this save has already cleared
+    if (m.obstacles) { const done = new Set((S.cleared && S.cleared[mapId]) || []); for (const [x, y, t, under] of m.obstacles) m.set(x, y, done.has(x + ',' + y) ? under : t); }
     this.objs = m.objs.map((o, i) => ({ ...o, ox: o.x, oy: o.y, px: o.x * TS, py: o.y * TS, i, wt: 1 + R() * 3, sheet: PEOPLE.has(o.kind) ? personSheet(this.palFor(o, i)) : null }));
     this.lp = S.players.map((p, i) => { const s = (spots && spots[i]) || S.pos[i] || S.pos[0]; return { i, x: s.x, y: s.y, px: s.x * TS, py: s.y * TS, dir: s.dir || 'down', moving: false, sheet: personSheet(personPalette(hash(p.name + i), { shirt: p.color, hair: ['#2a1f1a', '#c07a30', '#30304a', '#a03030'][i], hat: shadeHat(p.color), long: i % 2 === 1 })) }; });
+    // never spawn inside a wall (e.g. after a layout change)
+    for (const p of this.lp) if (this.solid(p.x, p.y) && !m.warps.some((w) => w.x === p.x && w.y === p.y)) { let best = null; for (let r = 1; r < 8 && !best; r++) for (let dy = -r; dy <= r && !best; dy++) for (let dx = -r; dx <= r && !best; dx++) if (!this.solid(p.x + dx, p.y + dy) && !m.warps.some((w) => w.x === p.x + dx && w.y === p.y + dy)) best = [p.x + dx, p.y + dy]; if (best) { [p.x, p.y] = best; p.px = p.x * 16; p.py = p.y * 16; } }
     // spread co-op players who would overlap
     const taken = new Set();
     for (const p of this.lp) {
@@ -27,11 +34,14 @@ export class World {
       if (taken.has(k)) { for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [2, 0], [-2, 0], [1, -1], [-1, -1]]) { const x = p.x + ox, y = p.y + oy; if (!taken.has(x + ',' + y) && !this.solid(x, y) && !m.warps.some((w) => w.x === x && w.y === y)) { p.x = x; p.y = y; p.px = x * 16; p.py = y * 16; break; } } k = p.x + ',' + p.y; }
       taken.add(k);
     }
+    this.initFollower();
+    this.rebake();
     this.savePos();
     this.snapCam();
     audio.play(m.musicKey, m.musicKey, m.music);
     G.net?.sendPos?.();
   }
+  rebake() { const m = this.map; const B = BIOMES[m.biome] ? m.biome : 'meadow'; const gymCol = m.cityIdx !== undefined ? TYPES[G.W.cities[m.cityIdx].type].color : '#c04848'; this.bake = bakeMap(m, m.kind === 'interior' ? 'interior' : B, m.kind === 'interior', gymCol); }
   palFor(o, i) {
     const base = { ...(o.pal || {}) };
     if (o.kind === 'leader') { const ty = G.W.cities[o.ci].type; base.shirt = TYPES[ty].color; base.hat = null; base.coat = false; }
@@ -40,6 +50,26 @@ export class World {
     if (o.kind === 'trainer' || o.kind === 'guard') base.hat = base.hat ?? (o.kind === 'guard' ? '#305070' : undefined);
     return personPalette(hash(this.map.id + i + (o.name || '')), base);
   }
+  // ---- partner monster that walks one tile behind player 1 (like the yellow mouse in a certain classic)
+  followMon() { const s = G.save; if (!s || !s.follower) return null; return s.players[0]?.party.find((m) => m.uid === s.follower) || null; }
+  initFollower() {
+    const p = this.lp[0]; const mon = this.followMon(); if (!p || !mon) { this.fol = null; return; }
+    const bx = p.x - DX[p.dir][0], by = p.y - DX[p.dir][1];
+    const ok = !this.solid(bx, by) && !this.map.warps.some((w) => w.x === bx && w.y === by);
+    const x = ok ? bx : p.x, y = ok ? by : p.y;
+    this.fol = { x, y, fx: x, fy: y, px: x * TS, py: y * TS, dir: p.dir, moving: false, mt: 0, stepT: 0.18, uid: mon.uid, emote: null, emoteT: 0 };
+  }
+  followStep(p) {
+    const f = this.fol; if (!f || p.i !== 0) return;
+    if (!this.followMon() || this.followMon().uid !== f.uid) { this.initFollower(); return; }
+    f.px = f.x * TS; f.py = f.y * TS;
+    if (f.x === p.fx && f.y === p.fy) return;
+    const dx = p.fx - f.x, dy = p.fy - f.y;
+    if (Math.abs(dx) + Math.abs(dy) > 1) { f.x = f.fx = p.fx; f.y = f.fy = p.fy; f.px = f.x * TS; f.py = f.y * TS; f.dir = p.dir; return; }
+    f.dir = dx > 0 ? 'right' : dx < 0 ? 'left' : dy > 0 ? 'down' : 'up';
+    f.fx = f.x; f.fy = f.y; f.x = p.fx; f.y = p.fy; f.mt = 0; f.moving = true; f.stepT = p.stepT;
+  }
+  emote(txt, t = 1.6) { if (this.fol) { this.fol.emote = txt; this.fol.emoteT = t; } }
   savePos() { G.save.pos = this.lp.map((p) => ({ x: p.x, y: p.y, dir: p.dir })); }
   visible(o) {
     const S = G.save;
@@ -76,10 +106,13 @@ export class World {
       }
       if (!this.canControl()) continue;
       const d = input.dir(p.i);
-      if (d) this.tryMove(p, d, input.held(p.i, 'b'));
+      if (d) this.tryMove(p, d, input.running(p.i));
       if (input.pressed(p.i, 'a')) this.interact(p);
       if (input.pressed(p.i, 'start')) { G.events.openMenu(p.i); }
     }
+    // partner follower
+    const f = this.fol;
+    if (f) { if (f.moving) { f.mt += dt / f.stepT; const k = Math.min(1, f.mt); f.px = (f.fx + (f.x - f.fx) * k) * TS; f.py = (f.fy + (f.y - f.fy) * k) * TS; if (k >= 1) { f.moving = false; f.px = f.x * TS; f.py = f.y * TS; } } if (f.emoteT > 0) f.emoteT -= dt; }
     // NPC wander
     for (const o of this.objs) {
       if (!o.wander || !this.canControl()) continue;
@@ -94,6 +127,7 @@ export class World {
     for (const pr of peers) { const d = this.peerDraw[pr.id] || (this.peerDraw[pr.id] = { x: pr.x * TS, y: pr.y * TS }); d.x += (pr.x * TS - d.x) * Math.min(1, dt * 10); d.y += (pr.y * TS - d.y) * Math.min(1, dt * 10); }
     const ct = this.camTarget(); this.cam.x += (ct.x - this.cam.x) * Math.min(1, dt * 10); this.cam.y += (ct.y - this.cam.y) * Math.min(1, dt * 10);
     if (Math.abs(ct.x - this.cam.x) < 0.5) this.cam.x = ct.x; if (Math.abs(ct.y - this.cam.y) < 0.5) this.cam.y = ct.y;
+    for (const f of this.fx) { f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 80 * dt; f.life -= dt; } this.fx = this.fx.filter((f) => f.life > 0);
     S.playtime += dt;
   }
   tryMove(p, d, run) {
@@ -112,6 +146,7 @@ export class World {
     }
     if (warp && warp.door && G.events.doorBlocked(warp)) return;
     p.fx = p.x; p.fy = p.y; p.x = nx; p.y = ny; p.mt = 0; p.moving = true; p.stepT = run ? 0.1 : 0.18;
+    this.followStep(p);
   }
   afterStep(p) {
     const m = this.map; this.savePos(); G.net?.sendPos?.();
@@ -126,11 +161,13 @@ export class World {
   interact(p) {
     let tx = p.x + DX[p.dir][0], ty = p.y + DX[p.dir][1];
     let o = this.objAt(tx, ty);
+    if (!o && p.i === 0 && this.fol && !this.fol.moving && this.fol.x === tx && this.fol.y === ty && this.followMon()) { G.events.interact({ kind: 'partner' }, 0); return; }
     if (!o && this.map.get(tx, ty) === T.COUNTER) o = this.objAt(tx + DX[p.dir][0], ty + DX[p.dir][1]);
     if (o) { if (PEOPLE.has(o.kind) && !o.fixedDir) o.dir = { up: 'down', down: 'up', left: 'right', right: 'left' }[p.dir]; G.events.interact(o, p.i); }
+    else if (this.map.clearable && this.map.clearable.has(this.map.get(tx, ty))) G.events.fieldObstacle(this.map.get(tx, ty), tx, ty, p.i);
   }
   async warp(to, tx, ty, dir, w) {
-    G.busy++; audio.sfx(w && (w.door || w.stairs) ? 'door' : 'blip');
+    G.busy++; G.warping = true; audio.sfx(w && (w.door || w.stairs) ? 'door' : 'blip');
     await ui.fade(true, 220);
     const spots = this.lp.map((p, k) => ({ x: tx + (k % 2 ? (k === 1 ? 1 : -1) : 0) * (k ? 1 : 0), y: ty + (k >= 2 ? 1 : 0) * (dir === 'up' ? 1 : -1) * 0, dir }));
     // spread co-op players onto free tiles near the arrival point
@@ -140,32 +177,44 @@ export class World {
     const prevName = this.map?.name;
     this.load(to, spots);
     await ui.fade(false, 220);
-    G.busy--;
+    G.busy--; G.warping = false;
     G.events.onEnter(this.map, prevName);
   }
   // ------------------------------------------------------------ render
   render(g) {
-    const m = this.map; if (!m) return; const B = BIOMES[m.biome] ? m.biome : 'meadow';
-    const frame = Math.floor(this.t * 2) % 2; const atlas = tileAtlas(m.kind === 'interior' ? 'interior' : B, frame);
+    const m = this.map; if (!m) return; const B = BIOMES[m.biome] ? m.biome : 'meadow'; const inside = m.kind === 'interior';
+    const frame = Math.floor(this.t * 2) % 2; const atlas = tileAtlas(inside ? 'interior' : B, frame);
     const cx = Math.round(this.cam.x), cy = Math.round(this.cam.y);
-    g.fillStyle = m.kind === 'interior' ? '#0d0a14' : BIOMES[B].tree2; g.fillRect(0, 0, view.w, view.h);
-    const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
-    for (let y = y0; y <= y0 + Math.ceil(view.h / TS); y++) for (let x = x0; x <= x0 + Math.ceil(view.w / TS); x++) {
-      if (x < 0 || y < 0 || x >= m.w || y >= m.h) continue; const t = m.t[y * m.w + x];
-      if (t === T.BWALL || t === T.DOOR) { g.drawImage(atlas, T.GRASS * TS, 0, TS, TS, x * TS - cx, y * TS - cy, TS, TS); continue; }
-      g.drawImage(atlas, t * TS, 0, TS, TS, x * TS - cx, y * TS - cy, TS, TS);
-    }
-    const gymCol = m.cityIdx !== undefined ? TYPES[G.W.cities[m.cityIdx].type].color : '#c04848';
-    for (const b of m.buildings) drawBuilding(g, b, b.x * TS - cx, b.y * TS - cy, gymCol);
-    // entities sorted by y
+    g.fillStyle = inside ? '#0d0a14' : BIOMES[B].tree2; g.fillRect(0, 0, view.w, view.h);
+    if (this.bake) g.drawImage(this.bake, -cx, -cy);
+    const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS); const x1 = x0 + Math.ceil(view.w / TS), y1 = y0 + Math.ceil(view.h / TS);
     const ents = [];
-    for (const o of this.objs) { if (!this.visible(o)) continue; ents.push({ y: o.py, draw: () => this.drawObj(g, o, cx, cy) }); }
-    for (const p of this.lp) ents.push({ y: p.py + 0.1, draw: () => this.drawPerson(g, p.sheet, p.px - cx, p.py - cy, p.dir, p.moving ? (Math.floor(p.mt * 2) % 2) + 1 : 0, this.lp.length > 1 ? 'P' + (p.i + 1) : null, G.save.players[p.i].color, p) });
-    for (const pr of G.net?.peersHere?.() || []) { const d = this.peerDraw[pr.id]; if (!d) continue; const sheet = pr.sheet || (pr.sheet = personSheet(personPalette(hash(pr.name), { shirt: pr.color || '#888' }))); const mv = Math.abs(d.x - pr.x * TS) + Math.abs(d.y - pr.y * TS) > 1; ents.push({ y: d.y, draw: () => { this.drawPerson(g, sheet, d.x - cx, d.y - cy, pr.dir || 'down', mv ? (Math.floor(this.t * 6) % 2) + 1 : 0, pr.name, pr.color || '#888', { x: Math.round(d.x / TS), y: Math.round(d.y / TS) }); if (pr.bubble && pr.bubbleUntil > Date.now()) this.bubble(g, d.x - cx + 8, d.y - cy - 14, pr.bubble); } }); }
+    for (let y = y0; y <= y1 + 2; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+      if (x < 0 || y < 0 || x >= m.w || y >= m.h) continue; const t = m.t[y * m.w + x];
+      if (ANIMATED.has(t) && y <= y1) g.drawImage(atlas, t * TS, 0, TS, TS, x * TS - cx, y * TS - cy, TS, TS);
+      else if (t === T.TREE && !inside) { const v = hash(x * 7 + y * 131) % 4; const img = tallTree(B, v, frame); ents.push({ y: y * TS + 2, draw: () => g.drawImage(img, x * TS - 3 - cx, y * TS + 16 - 32 - cy) }); }
+    }
+    if (!inside) drawShore(g, m, cx, cy, this.t, BIOMES[B]);
+    for (const o of this.objs) { if (!this.visible(o)) continue; ents.push({ y: o.py + 4, draw: () => this.drawObj(g, o, cx, cy) }); }
+    const f = this.fol; const fm = f && this.followMon(); const p0 = this.lp[0];
+    if (fm && fm.hp > 0 && !(f.x === p0.x && f.y === p0.y && !f.moving)) ents.push({ y: f.py + 4.05, draw: () => this.drawPartner(g, f, fm, f.px - cx, f.py - cy) });
+    for (const p of this.lp) ents.push({ y: p.py + 4.1, draw: () => this.drawPerson(g, p.sheet, p.px - cx, p.py - cy, p.dir, p.moving ? (Math.floor(p.mt * 2) % 2) + 1 : 0, this.lp.length > 1 ? 'P' + (p.i + 1) : null, G.save.players[p.i].color, p) });
+    for (const pr of G.net?.peersHere?.() || []) { const d = this.peerDraw[pr.id]; if (!d) continue; const sheet = pr.sheet || (pr.sheet = personSheet(personPalette(hash(pr.name), { shirt: pr.color || '#888' }))); const mv = Math.abs(d.x - pr.x * TS) + Math.abs(d.y - pr.y * TS) > 1; ents.push({ y: d.y + 4, draw: () => { this.drawPerson(g, sheet, d.x - cx, d.y - cy, pr.dir || 'down', mv ? (Math.floor(this.t * 6) % 2) + 1 : 0, pr.name, pr.color || '#888', { x: Math.round(d.x / TS), y: Math.round(d.y / TS) }); if (pr.bubble && pr.bubbleUntil > Date.now()) this.bubble(g, d.x - cx + 8, d.y - cy - 14, pr.bubble); } }); }
     ents.sort((a, b) => a.y - b.y).forEach((e) => e.draw());
-    if (m.kind !== 'interior' && (B === 'snow')) { g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 40; i++) { const x = (i * 97 + this.t * 20 * (1 + (i % 3))) % view.w, y = (i * 53 + this.t * 30 * (1 + (i % 2))) % view.h; g.fillRect(x, y, 1, 1); } }
-    if (m.kind !== 'interior' && B === 'neon') { g.fillStyle = 'rgba(40,0,80,0.12)'; g.fillRect(0, 0, view.w, view.h); }
-    if (m.kind !== 'interior' && B === 'volcano') { g.fillStyle = 'rgba(255,80,20,0.08)'; g.fillRect(0, 0, view.w, view.h); }
+    for (const f of this.fx) { g.globalAlpha = Math.min(1, f.life * 2); g.fillStyle = f.c; g.fillRect(Math.round(f.x - cx), Math.round(f.y - cy), 2, 2); } g.globalAlpha = 1;
+    if (!inside && B === 'snow') { g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 40; i++) { const x = (i * 97 + this.t * 20 * (1 + (i % 3))) % view.w, y = (i * 53 + this.t * 30 * (1 + (i % 2))) % view.h; g.fillRect(x, y, 1, 1); } }
+    if (!inside && B === 'neon') { g.fillStyle = 'rgba(40,0,80,0.12)'; g.fillRect(0, 0, view.w, view.h); }
+    if (!inside && B === 'volcano') { g.fillStyle = 'rgba(255,80,20,0.08)'; g.fillRect(0, 0, view.w, view.h); for (let i = 0; i < 18; i++) { const x = (i * 61 + this.t * 9) % view.w, y = view.h - ((i * 37 + this.t * 25 * (1 + (i % 3))) % view.h); g.fillStyle = i % 2 ? '#ffb040' : '#ff6a2a'; g.fillRect(x, y, 1, 1); } }
+    // lighting: real-world time of day outdoors (Settings → Day / night cycle)
+    const phase = !inside && G.settings.daynight !== false ? dayPhase() : { dark: 0 };
+    const lights = [];
+    if (phase.dark > 0.01) {
+      for (const p of this.lp) lights.push({ x: p.px - cx + 8, y: p.py - cy + 4, r: 56 });
+      for (const b of m.buildings) { const roofH = (b.h - 2) * TS; for (let i = 0; i < b.w; i++) { const wx = b.x * TS + i * TS + 8 - cx, wy = b.y * TS + roofH + 11 - cy; if (wx < -30 || wy < -30 || wx > view.w + 30 || wy > view.h + 30) continue; lights.push({ x: wx, y: wy, r: i === Math.floor(b.w / 2) ? 30 : 22, warm: true, a: 0.9 }); } }
+      for (const o of this.objs) if ((o.kind === 'item' || o.kind === 'note') && this.visible(o)) lights.push({ x: o.px - cx + 8, y: o.py - cy + 8, r: 16, a: 0.6 });
+    }
+    drawLighting(g, view.w, view.h, phase, lights);
+    if (input.runLock.some((v, i) => v && i < this.lp.length)) { g.font = '8px "Press Start 2P"'; g.textAlign = 'right'; const tx = 'RUN ON'; const w = g.measureText(tx).width + 8; g.fillStyle = 'rgba(20,16,28,0.8)'; g.fillRect(view.w - w - 4, view.h - 16, w, 12); g.fillStyle = '#ffd23f'; g.fillText(tx, view.w - 8, view.h - 7); }
   }
   drawPerson(g, sheet, x, y, dir, f, tag, col, p) {
     x = Math.round(x); y = Math.round(y);
@@ -184,6 +233,19 @@ export class World {
     }
     drawObject(g, o.kind, Math.round(x), Math.round(y), this.t);
     if (o.kind === 'station') { g.fillStyle = '#ffd23f'; g.font = '8px "Press Start 2P"'; g.textAlign = 'center'; g.fillText({ match: '≡', sequence: '#', speed: '!' }[o.game], Math.round(x) + 8, Math.round(y) - 1 + Math.sin(this.t * 3) * 1.5); }
+  }
+  drawPartner(g, f, m, x, y) {
+    const sp = G.W.species[m.sp]; if (!sp) return;
+    const img = monsterCanvas(sp, f.dir === 'up');
+    const hop = f.moving ? -Math.abs(Math.sin(f.mt * Math.PI)) * 3 : Math.sin(this.t * 3) * 0.6;
+    const S = 30;
+    g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(x + 8, y + 13, 7, 2.5, 0, 0, 6.29); g.fill();
+    g.save();
+    if (f.dir === 'right') { g.translate(x + 8, 0); g.scale(-1, 1); g.translate(-(x + 8), 0); }
+    g.drawImage(img, 0, 0, img.width, img.height, Math.round(x + 8 - S / 2), Math.round(y + 17 - S + hop), S, S);
+    g.restore();
+    if (this.map.get(f.x, f.y) === T.TALL && !f.moving) { const atlas = tileAtlas(this.map.biome, Math.floor(this.t * 2) % 2); g.drawImage(atlas, T.TALL * TS, 8, TS, 8, x, y + 8, TS, 8); }
+    if (f.emote && f.emoteT > 0) this.bubble(g, x + 8, y - 8, f.emote);
   }
   bubble(g, x, y, text) { text = text.slice(0, 28); g.font = '8px "VT323"'; const w = g.measureText(text).width + 6; g.fillStyle = '#fff'; g.fillRect(x - w / 2, y - 9, w, 10); g.fillStyle = '#14101c'; g.textAlign = 'center'; g.fillText(text, x, y - 1.5); }
 }

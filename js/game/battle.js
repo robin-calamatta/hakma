@@ -258,7 +258,7 @@ class BattleScene {
     return true;
   }
   async bag(al, k) {
-    const W = G.W; const bag = G.save.bag; const ids = Object.keys(bag).filter((id) => bag[id] > 0 && ITEMS[id]);
+    const W = G.W; const bag = G.save.bag; const ids = Object.keys(bag).filter((id) => bag[id] > 0 && ITEMS[id] && ITEMS[id].kind !== 'tm');
     if (!ids.length) { await this.msg('Your bag is empty!', 900); return 'back'; }
     const i = await ui.choose(null, ids.map((id) => ({ html: `<img class="ico" src="${itemIconSafe(id)}">${esc(ITEMS[id].name)} <span class="cnt">×${bag[id]}</span>`, disabled: ITEMS[id].kind === 'cube' && this.o.kind !== 'wild' })), { cls: 'bmenu bag' });
     if (i < 0) return 'back';

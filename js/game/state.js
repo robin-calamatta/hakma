@@ -13,6 +13,12 @@ export const ITEMS = {
   supertonic: { name: 'Super Tonic', price: 400, desc: 'Restores 90 HP.', kind: 'heal', amt: 90, badge: 2 },
   maxtonic:   { name: 'Max Tonic', price: 900, desc: 'Fully restores HP.', kind: 'heal', amt: 9999, badge: 4 },
   revive:     { name: 'Revive Spark', price: 700, desc: 'Revives a fainted monster to half HP.', kind: 'revive' },
+  tm_logic:     { name: 'Disc: Proof by Induction', price: 2500, desc: 'Technique Disc. Teaches a monster Proof by Induction (Logic, 85).', kind: 'tm', type: 'logic', move: 'Proof by Induction', badge: 3 },
+  tm_cipher:    { name: 'Disc: Zero-Knowledge Strike', price: 2500, desc: 'Technique Disc. Teaches Zero-Knowledge Strike (Cipher, 85).', kind: 'tm', type: 'cipher', move: 'Zero-Knowledge Strike', badge: 3 },
+  tm_spark:     { name: 'Disc: Overclock Surge', price: 2500, desc: 'Technique Disc. Teaches Overclock Surge (Spark, 85).', kind: 'tm', type: 'spark', move: 'Overclock Surge', badge: 3 },
+  tm_data:      { name: 'Disc: Big Data Crash', price: 2500, desc: 'Technique Disc. Teaches Big Data Crash (Data, 85).', kind: 'tm', type: 'data', move: 'Big Data Crash', badge: 3 },
+  tm_structure: { name: 'Disc: Foundation Quake', price: 2500, desc: 'Technique Disc. Teaches Foundation Quake (Structure, 85).', kind: 'tm', type: 'structure', move: 'Foundation Quake', badge: 3 },
+  tm_flux:      { name: 'Disc: Refactor Blaze', price: 2500, desc: 'Technique Disc. Teaches Refactor Blaze (Flux, 85).', kind: 'tm', type: 'flux', move: 'Refactor Blaze', badge: 3 },
   shard:      { name: 'Insight Shard', price: 0, desc: 'Earned by learning. Raises a monster by one level.', kind: 'level' },
 };
 
@@ -22,9 +28,10 @@ export function saveSettings(s) { localStorage.setItem('hakma.settings', JSON.st
 
 export function newSave(name) {
   return {
-    v: SAVE_VERSION, id: uid(), created: Date.now(), updated: Date.now(), playtime: 0, topic: null,
+    v: SAVE_VERSION, id: uid(), seed: uid(), created: Date.now(), updated: Date.now(), playtime: 0, topic: null,
     players: [newPlayer(name, 0)], bag: { cube: 5, tonic: 3 }, money: 500, badges: [false, false, false, false, false, false, false, false], champion: false,
     flags: {}, map: 'home_room', pos: [{ x: 5, y: 4, dir: 'down' }], lastHeal: { map: 'home_house', x: 4, y: 5 },
+    skills: {}, cleared: {},
     seen: {}, caught: {}, codex: {}, stats: { answered: 0, correct: 0, quick: 0, perCity: {} }, missed: [], trainers: {}, taken: {}, quests: {},
   };
 }
@@ -40,7 +47,13 @@ export function stats(W, m) {
   return { hp: Math.floor((b.hp * 2 * L) / 100) + L + 12, atk: Math.floor((b.atk * 2 * L) / 100) + 5, def: Math.floor((b.def * 2 * L) / 100) + 5, spd: Math.floor((b.spd * 2 * L) / 100) + 5 };
 }
 export const maxHp = (W, m) => stats(W, m).hp;
-export const movesOf = (W, m) => W.species[m.sp].moves.filter((mv) => mv.lvl <= m.lvl);
+export const FIELD_SKILLS = {
+  cut:   { name: 'Slice', disc: 'Slice Disc', badge: 0, desc: 'Cuts down small saplings that block paths.' },
+  smash: { name: 'Smash', disc: 'Smash Disc', badge: 2, desc: 'Shatters cracked boulders in your way.' },
+  fly:   { name: 'Soar',  disc: 'Soar Disc',  badge: 4, desc: 'Fly instantly to any city you have visited (from the Region Map).' },
+};
+export const tmMove = (id) => ({ name: ITEMS[id].move, power: 85, type: ITEMS[id].type, kind: 'hit', lvl: 1, tm: true });
+export const movesOf = (W, m) => W.species[m.sp].moves.filter((mv) => mv.lvl <= m.lvl).concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
 export const monName = (W, m) => m.nick || W.species[m.sp].name;
 export function healMon(W, m) { m.hp = maxHp(W, m); }
 export function healAll(W, save) { for (const p of save.players) { for (const m of p.party) healMon(W, m); } }
@@ -84,8 +97,12 @@ export function readSlot(n) { try { return JSON.parse(localStorage.getItem(SLOT_
 export function deleteSlot(n) { localStorage.removeItem(SLOT_KEY(n)); }
 export function migrate(save) {
   if (!save) return save;
+  if (!save.seed) save.seed = 'legacy'; // saves from before randomized worlds keep their original map
+  save.skills = save.skills || {}; save.cleared = save.cleared || {};
+  for (const k in FIELD_SKILLS) if (save.badges?.[FIELD_SKILLS[k].badge]) save.skills[k] = true; // earned before skills existed
   save.players.forEach((p, i) => { p.color = p.color || PLAYER_COLORS[i]; p.box = p.box || []; });
   save.pos = save.pos || [{ x: 5, y: 4, dir: 'down' }];
+  if (save.follower === undefined) save.follower = save.players[0]?.party[0]?.uid || undefined; // partner walks behind you by default
   while (save.pos.length < save.players.length) save.pos.push({ ...save.pos[0] });
   for (const k of ['flags', 'seen', 'caught', 'codex', 'trainers', 'taken', 'quests']) save[k] = save[k] || {};
   save.missed = save.missed || []; save.stats = save.stats || { answered: 0, correct: 0, quick: 0, perCity: {} };

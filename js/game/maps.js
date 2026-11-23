@@ -15,7 +15,13 @@ function grid(w, h, fill) {
   m.rect = (x, y, rw, rh, v) => { for (let j = y; j < y + rh; j++) for (let i = x; i < x + rw; i++) m.set(i, j, v); };
   return m;
 }
-const cityBiome = (W, i) => W.cities[i]?.biome || BIOME_ORDER[i % 8];
+const biomeCache = {};
+const cityBiome = (W, i) => { if (W.cities[i]?.biome) return W.cities[i].biome; if (!SEED) return BIOME_ORDER[i % 8]; const k = W.id + SEED; const order = biomeCache[k] || (biomeCache[k] = [...BIOME_ORDER].sort((a, b) => hash(k + a) - hash(k + b))); return order[i % 8]; };
+export const biomeOf = cityBiome;
+const doorOutside = (W, mapId, kind) => { const cm = getMap(W, mapId); const d = cm.warps.find((q) => q.door && q.kind === kind); return [d.x, d.y + 1]; };
+const routeEntryY = (W, r) => routeLayout(W, r).h - 2;
+// Where you land when Soaring to a place: just outside its Mend Station (or home in Origin Town)
+export function flyPoint(W, mapId) { return mapId === 'hometown' ? doorOutside(W, 'hometown', 'home') : doorOutside(W, mapId, 'mend'); }
 function building(m, x, y, w, h, kind, to, label) {
   m.rect(x, y, w, h, T.BWALL);
   const dx = x + Math.floor(w / 2), dy = y + h - 1; m.set(dx, dy, T.DOOR);
@@ -32,9 +38,15 @@ function interior(w, h, exitTo, ex, ey) {
 }
 const npc = (x, y, o) => ({ x, y, kind: 'npc', dir: 'down', ...o });
 
+// ---- per-save world seed: every new game gets a different region layout. 'legacy' keeps pre-seed saves identical.
+let SEED = '';
+export function setWorldSeed(seed) { SEED = !seed || seed === 'legacy' ? '' : String(seed); }
+export const worldSeed = () => SEED;
+function variant(W, key, n) { if (!SEED) return 0; return hash(W.id + SEED + 'var' + key) % n; }
+const CLEARABLE = new Set([T.CUTTREE, T.CRACKROCK]);
 const maps = {};
 export function getMap(W, id) {
-  const key = W.id + ':' + id;
+  const key = W.id + ':' + SEED + ':' + id;
   if (!maps[key]) { const m = build(W, id); m.id = id; m.musicKey = m.musicKey || key; maps[key] = m; }
   return maps[key];
 }
@@ -61,7 +73,7 @@ function homeRoom(W) {
   return m;
 }
 function homeHouse(W) {
-  const m = interior(10, 8, 'hometown', 6, 8);
+  const m = interior(10, 8, 'hometown', ...doorOutside(W, 'hometown', 'home'));
   m.set(7, 2, T.STAIRS); m.warps.push({ x: 7, y: 2, to: 'home_room', tx: 6, ty: 2, dir: 'left', stairs: true });
   m.set(4, 4, T.TABLE); m.set(1, 2, T.SHELF); m.set(2, 2, T.SHELF); m.set(8, 6, T.PLANT); m.rect(3, 5, 3, 1, T.RUG);
   m.objs.push(npc(3, 4, { kind: 'guardian', name: 'Guardian', pal: { hair: '#5a3820', shirt: '#e06090' }, dir: 'right' }));
@@ -69,25 +81,28 @@ function homeHouse(W) {
   return m;
 }
 function hometown(W) {
-  const w = 24, h = 20, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + 'home'));
+  const w = 24, h = 20, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'home'));
+  const M = variant(W, 'home', 2) === 1; const mx = (x, bw = 1) => (M ? w - x - bw : x);
   border(m, [11, 12], []);
   m.rect(11, 0, 2, 11, T.PATH); m.rect(3, 9, 18, 2, T.PATH);
-  const hd = building(m, 4, 4, 5, 4, 'home', 'home_house'); m.rect(hd.dx, hd.dy + 1, 1, 1, T.PATH);
+  const hd = building(m, mx(4, 5), 4, 5, 4, 'home', 'home_house'); m.set(hd.dx, hd.dy + 1, T.PATH);
   m.warps[m.warps.length - 1].tx = 4; m.warps[m.warps.length - 1].ty = 6;
-  const ld = building(m, 14, 3, 7, 5, 'prof', 'lab'); m.set(ld.dx, ld.dy + 1, T.PATH);
+  const ld = building(m, mx(14, 7), 3, 7, 5, 'prof', 'lab'); m.set(ld.dx, ld.dy + 1, T.PATH);
   m.warps[m.warps.length - 1].tx = 5; m.warps[m.warps.length - 1].ty = 8;
-  m.rect(15, 13, 5, 3, T.WATER); m.rect(14, 12, 7, 1, T.FENCE);
+  m.rect(mx(15, 5), 13, 5, 3, T.WATER); m.rect(mx(14, 7), 12, 7, 1, T.FENCE);
   for (let i = 0; i < 18; i++) { const x = r.int(2, w - 3), y = r.int(11, h - 3); if (m.get(x, y) === T.GRASS) m.set(x, y, r() < 0.6 ? T.FLOWER : T.TREE); }
-  m.set(13, 11, T.SIGN); m.objs.push({ x: 13, y: 11, kind: 'sign', text: [`${HOMETOWN} — where every journey of learning begins.`, `North: Route 1 toward ${W.cities[0].name}.`] });
-  m.objs.push(npc(7, 12, { name: 'Kid', wander: true, lines: ['In battle you attack by answering questions! Get it right fast for a Quick Recall critical hit.', 'Wrong answers aren\'t wasted — you see the explanation, and the question comes back later so you can master it.'] }));
-  m.objs.push(npc(17, 11, { name: 'Elder', lines: ['Six types rule this world:', 'Logic beats Cipher. Cipher beats Spark. Spark beats Data.', 'Data beats Structure. Structure beats Flux. And Flux beats Logic!', 'A super-effective hit does double damage.'] }));
-  m.objs.push(npc(10, 2, { kind: 'guard', name: 'Ranger', gate: 'starter', dir: 'down' }));
-  m.warps.push({ x: 11, y: 0, to: 'route1', tx: 10, ty: 38, dir: 'up' }, { x: 12, y: 0, to: 'route1', tx: 11, ty: 38, dir: 'up' });
-  Object.assign(m, { name: HOMETOWN, kind: 'town', biome: 'meadow', music: 'town', ci: 0, gateNorth: { y: 1, flag: 'starter' } });
+  const sx = mx(13); m.set(sx, 11, T.SIGN); m.objs.push({ x: sx, y: 11, kind: 'sign', text: [`${HOMETOWN} — where every journey of learning begins.`, `North: Route 1 toward ${W.cities[0].name}.`] });
+  m.set(mx(7), 12, T.GRASS); m.set(mx(17), 11, T.GRASS);
+  m.objs.push(npc(mx(7), 12, { name: 'Kid', wander: true, lines: ['In battle you attack by answering questions! Get it right fast for a Quick Recall critical hit.', 'Wrong answers aren\'t wasted — you see the explanation, and the question comes back later so you can master it.'] }));
+  m.objs.push(npc(mx(17), 11, { name: 'Elder', lines: ['Six types rule this world:', 'Logic beats Cipher. Cipher beats Spark. Spark beats Data.', 'Data beats Structure. Structure beats Flux. And Flux beats Logic!', 'A super-effective hit does double damage.'] }));
+  m.objs.push(npc(mx(10), 2, { kind: 'guard', name: 'Ranger', gate: 'starter', dir: 'down' }));
+  const ry = routeEntryY(W, 1);
+  m.warps.push({ x: 11, y: 0, to: 'route1', tx: 10, ty: ry, dir: 'up' }, { x: 12, y: 0, to: 'route1', tx: 11, ty: ry, dir: 'up' });
+  Object.assign(m, { name: HOMETOWN, kind: 'town', biome: SEED ? cityBiome(W, 0) : 'meadow', music: 'town', ci: 0, gateNorth: { y: 1, flag: 'starter' } });
   return m;
 }
 function profLab(W) {
-  const m = interior(12, 10, 'hometown', 17, 8);
+  const m = interior(12, 10, 'hometown', ...doorOutside(W, 'hometown', 'prof'));
   m.rect(1, 2, 3, 1, T.SHELF); m.rect(8, 2, 3, 1, T.SHELF); m.rect(4, 5, 5, 1, T.TABLE); m.set(1, 7, T.PLANT); m.set(10, 7, T.PLANT); m.set(10, 4, T.PC);
   m.objs.push(npc(6, 3, { kind: 'prof', name: W.profName, pal: { coat: true, hair: '#e0e0f0', shirt: '#3070d0' } }));
   W.starters.forEach((sid, i) => m.objs.push({ x: 4 + i * 2, y: 5, kind: 'starter', sp: sid, solidTile: true }));
@@ -116,8 +131,8 @@ const tipLines = (W, ci, k, n = 2) => { const terms = W.cities[ci]?.terms || [];
 // ------------------------------------------------------------ routes
 const routeCache = {};
 export function routeLayout(W, r) {
-  const key = W.id + r; if (routeCache[key]) return routeCache[key];
-  const w = 22, h = 40, R = rng(hash(W.id + 'route' + r)); const px = new Array(h);
+  const key = W.id + SEED + r; if (routeCache[key]) return routeCache[key];
+  const w = 22, h = SEED ? 34 + 2 * rng(hash(W.id + SEED + 'rlen' + r)).int(0, 6) : 40, R = rng(hash(W.id + SEED + 'route' + r)); const px = new Array(h);
   let cx = 10;
   for (let y = h - 1; y >= 0; y--) {
     if (y > 4 && y < h - 4 && (h - y) % 6 === 0) cx = Math.max(4, Math.min(15, cx + R.pick([-4, -3, 3, 4, -2, 2])));
@@ -126,7 +141,7 @@ export function routeLayout(W, r) {
   return (routeCache[key] = { w, h, px, R });
 }
 function route(W, r) {
-  const { w, h, px } = routeLayout(W, r); const R = rng(hash(W.id + 'r' + r));
+  const { w, h, px } = routeLayout(W, r); const R = rng(hash(W.id + SEED + 'r' + r));
   const toCity = r <= 8 ? r - 1 : null; const fromCity = r === 1 ? null : r - 2;
   const biome = cityBiome(W, Math.min(r - 1, 7));
   const m = grid(w, h, T.GRASS); border(m, [10, 11], [10, 11]);
@@ -143,8 +158,8 @@ function route(W, r) {
   [0.78, 0.52, 0.27].forEach((f, k) => {
     const y = Math.floor(h * f) + R.int(-2, 2); const left = R() < 0.5; const x = left ? px[y] - 2 : px[y] + 3;
     if (x < 2 || x > w - 3) return; m.set(x, y, T.GRASS); m.set(left ? x + 1 : x - 1, y, T.PATH);
-    const nm = W.trainerName(hash(W.id + r + 't' + k)); const n = Math.min(1 + Math.floor((r + k) / 3), 3);
-    m.objs.push({ x, y, kind: 'trainer', dir: left ? 'right' : 'left', sight: 4, key: `r${r}t${k}`, name: nm.name, cls: nm.cls, team: W.makeTeam(hash(W.id + r + 'team' + k), lines, n, hi + 1 - (n - 1)), money: (hi + 2) * 22, qci: Math.min(r - 1, 7), tip: tipLines(W, Math.min(r - 1, 7), k + 3, 1)[0] });
+    const nm = W.trainerName(hash(W.id + SEED + r + 't' + k)); const n = Math.min(1 + Math.floor((r + k) / 3), 3);
+    m.objs.push({ x, y, kind: 'trainer', dir: left ? 'right' : 'left', sight: 4, key: `r${r}t${k}`, name: nm.name, cls: nm.cls, team: W.makeTeam(hash(W.id + SEED + r + 'team' + k), lines, n, hi + 1 - (n - 1)), money: (hi + 2) * 22, qci: Math.min(r - 1, 7), tip: tipLines(W, Math.min(r - 1, 7), k + 3, 1)[0] });
   });
   // item caches + notes (placed beside the path so they are always reachable)
   const spots = []; for (let y = 4; y < h - 4; y += 3) { for (const x of [px[y] - 1, px[y] + 2]) if (x > 1 && x < w - 2 && !m.objs.some((o) => o.x === x && o.y === y)) spots.push([x, y]); }
@@ -156,6 +171,33 @@ function route(W, r) {
   // signpost
   m.set(px[h - 4] - 1, h - 4, T.SIGN);
   m.objs.push({ x: px[h - 4] - 1, y: h - 4, kind: 'sign', text: [`Route ${r}`, toCity !== null ? `North: ${W.cities[toCity].name} — ${W.cities[toCity].theme}.` : 'North: the Mastery Summit.', 'Tall grass hides wild monsters. Lost notes on this route preview what\'s ahead!'] });
+  // ---- field-skill obstacles. Slice (from Leader 1) clears saplings; Smash (from Leader 3) breaks cracked boulders.
+  // A wall only blocks the main road on routes you reach after earning that skill; pockets hide bonus items.
+  const obst = [];
+  const wallRow = (tile) => {
+    for (let tries = 0; tries < 60; tries++) {
+      const y = R.int(8, h - 10); const x0 = px[y];
+      if (px[y - 1] !== x0 || px[y + 1] !== x0 || m.objs.some((o) => Math.abs(o.y - y) <= 1)) continue;
+      for (let x = 2; x < w - 2; x++) { if (x === x0 || x === x0 + 1) { obst.push([x, y, tile, T.PATH]); m.set(x, y, tile); } else m.set(x, y, T.TREE); }
+      return true;
+    }
+    return false;
+  };
+  const wallKind = r >= 4 && R() < 0.45 ? T.CRACKROCK : r >= 2 && R() < 0.7 ? T.CUTTREE : null;
+  if (wallKind !== null && r <= 8) wallRow(wallKind);
+  if (r >= 2) {
+    for (let tries = 0; tries < 6 && sp.length; tries++) {
+      const [x, y] = sp.pop(); const dir = x < px[y] ? -1 : 1; const ix = x + dir;
+      if (ix < 2 || ix > w - 3 || m.objs.some((o) => Math.abs(o.x - ix) <= 1 && Math.abs(o.y - y) <= 1) || obst.some((o) => Math.abs(o[1] - y) <= 1)) continue;
+      const tile = r >= 4 && R() < 0.5 ? T.CRACKROCK : T.CUTTREE;
+      obst.push([x, y, tile, T.GRASS]); m.set(x, y, tile); m.set(ix, y, T.GRASS);
+      for (const [ax, ay] of [[ix, y - 1], [ix, y + 1], [ix + dir, y]]) if (ax >= 1 && ax <= w - 2) m.set(ax, ay, T.TREE);
+      const prize = r >= 5 ? R.pick(['tm', 'shard', 'cube2', 'maxtonic']) : R.pick(['shard', 'cube2', 'supertonic']);
+      m.objs.push({ x: ix, y, kind: 'item', item: prize === 'tm' ? 'tm_' + R.pick(['logic', 'cipher', 'spark', 'data', 'structure', 'flux']) : prize, count: 1, key: `r${r}p` });
+      break;
+    }
+  }
+  m.obstacles = obst; m.clearable = CLEARABLE;
   // exits
   const southTo = fromCity === null ? ['hometown', 11, 2] : [`city${fromCity}`, 14, 2];
   const northTo = toCity !== null ? [`city${toCity}`, 14, 23] : ['summit', 6, 32];
@@ -166,44 +208,42 @@ function route(W, r) {
 
 // ------------------------------------------------------------ cities
 function city(W, i) {
-  const c = W.cities[i]; const w = 30, h = 26, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + 'city' + i)); const biome = cityBiome(W, i);
+  const c = W.cities[i]; const w = 30, h = 26, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'city' + i)); const biome = cityBiome(W, i);
+  // layout variation: mirror + which slot holds the Mend Station / Study Lab / Supply Depot
+  const M = variant(W, 'cityM' + i, 2) === 1; const perm = [[0, 1, 2], [1, 0, 2], [2, 1, 0], [0, 2, 1], [1, 2, 0], [2, 0, 1]][variant(W, 'cityP' + i, 6)];
+  const mx = (x, bw = 1) => (M ? w - x - bw : x);
   border(m, [14, 15], [14, 15]);
   m.rect(14, 0, 2, h, T.PATH); m.rect(2, 9, 26, 2, T.PATH); m.rect(2, 19, 26, 2, T.PATH);
-  const doors = [
-    building(m, 3, 2, 8, 6, 'gym', `city${i}_gym`, c.name + ' Mastery Hall'),
-    building(m, 19, 3, 6, 5, 'mend', `city${i}_mend`, 'Mend Station'),
-    building(m, 3, 13, 6, 5, 'lab', `city${i}_lab`, 'Study Lab'),
-    building(m, 10, 14, 3, 4, 'house', `city${i}_house`, 'House'),
-    building(m, 19, 13, 6, 5, 'depot', `city${i}_depot`, 'Supply Depot'),
-  ];
+  const slots = [[19, 3, 6, 5], [3, 13, 6, 5], [19, 13, 6, 5]]; const kinds = [['mend', 'Mend Station'], ['lab', 'Study Lab'], ['depot', 'Supply Depot']];
+  const doors = [building(m, mx(3, 8), 2, 8, 6, 'gym', `city${i}_gym`, c.name + ' Mastery Hall'), building(m, mx(10, 3), 14, 3, 4, 'house', `city${i}_house`, 'House')];
+  kinds.forEach(([k, label], j) => { const [x, y, bw, bh] = slots[perm[j]]; doors.push(building(m, mx(x, bw), y, bw, bh, k, `city${i}_${k}`, label)); });
   for (const d of doors) m.set(d.dx, d.dy + 1, T.PATH);
-  // exit tiles target each interior's entry
   const ent = { gym: [7, 18], mend: [5, 7], lab: [6, 8], house: [4, 6], depot: [5, 7] };
   for (const wp of m.warps) if (wp.door) { const e = ent[wp.kind]; wp.tx = e[0]; wp.ty = e[1]; }
   const reserved = new Set(); const res = (x, y) => reserved.add(x + ',' + y);
   for (const d of doors) for (let k = 0; k < 3; k++) res(d.dx, d.dy + k);
-  const npcSpots = [[12, 11], [17, 11], [8, 21], [21, 21], [5, 11], [25, 11], [17, 7], [26, 22]].sort(() => r() - 0.5);
+  const npcSpots = [[12, 11], [17, 11], [8, 21], [21, 21], [5, 11], [25, 11], [17, 7], [26, 22]].map(([x, y]) => [mx(x), y]).filter(([x, y]) => m.get(x, y) !== T.BWALL && m.get(x, y) !== T.DOOR).sort(() => r() - 0.5);
   npcSpots.forEach(([x, y]) => res(x, y));
-  if (biome === 'coast' || biome === 'meadow' || biome === 'forest') m.rect(23, 22, 4, 1, T.WATER);
+  if (biome === 'coast' || biome === 'meadow' || biome === 'forest') m.rect(mx(23, 4), 22, 4, 1, T.WATER);
   scatter(m, r, 26, biome === 'neon' || biome === 'crystal' ? [T.TREE, T.FLOWER, T.ROCK] : [T.FLOWER, T.FLOWER, T.TREE, T.TREE, T.ROCK], (x, y) => reserved.has(x + ',' + y) || (x >= 13 && x <= 16) || y === 8 || y === 11 || y === 18 || y === 21 || y === 1 || y === h - 3);
-  // NPCs: tip givers
   const pals = ['#d04040', '#3070d0', '#30a050', '#8040c0', '#e0a020'];
   for (let k = 0; k < 4; k++) { const [x, y] = npcSpots[k]; m.set(x, y, m.get(x, y) === T.PATH ? T.PATH : T.GRASS); m.objs.push(npc(x, y, { name: W.trainerName(hash(c.name + k)).name, tips: tipLines(W, i, k), wander: k % 2 === 0, pal: { shirt: pals[k] } })); }
   { const [x, y] = npcSpots[4]; m.set(x, y, T.GRASS); m.objs.push(npc(x, y, { kind: 'researcher', ci: i, name: 'Field Researcher', pal: { coat: true, shirt: '#30a050' } })); }
-  // signs
-  m.set(16, 22, T.SIGN); m.objs.push({ x: 16, y: 22, kind: 'sign', text: [`${c.name} — ${c.theme}`, `Mastery Hall Leader: ${c.leader}. Badge: ${c.badge}.`] });
-  m.set(12, 8, T.SIGN); m.objs.push({ x: 12, y: 8, kind: 'sign', text: [`${c.name} Mastery Hall`, `Leader ${c.leader} — "${c.theme}"`, 'Challengers must first pass the Study Lab trial.'] });
-  m.objs.push(npc(13, 2, { kind: 'guard', name: 'Gatekeeper', gate: 'badge', ci: i, dir: 'down' }));
+  const s1 = mx(16), s2 = mx(12);
+  m.set(s1, 22, T.SIGN); m.objs.push({ x: s1, y: 22, kind: 'sign', text: [`${c.name} — ${c.theme}`, `Mastery Hall Leader: ${c.leader}. Badge: ${c.badge}.`] });
+  m.set(s2, 8, T.SIGN); m.objs.push({ x: s2, y: 8, kind: 'sign', text: [`${c.name} Mastery Hall`, `Leader ${c.leader} — "${c.theme}"`, 'Challengers must first pass the Study Lab trial.'] });
+  m.objs.push(npc(mx(13), 2, { kind: 'guard', name: 'Gatekeeper', gate: 'badge', ci: i, dir: 'down' }));
+  const ry = i + 2 <= 9 ? routeEntryY(W, i + 2) : 38;
   for (const x of [14, 15]) {
     m.warps.push({ x, y: h - 1, to: `route${i + 1}`, tx: 10 + (x - 14), ty: 1, dir: 'down' });
-    m.warps.push({ x, y: 0, to: `route${i + 2}`, tx: 10 + (x - 14), ty: 38, dir: 'up' });
+    m.warps.push({ x, y: 0, to: `route${i + 2}`, tx: 10 + (x - 14), ty: ry, dir: 'up' });
   }
   Object.assign(m, { name: c.name, kind: 'town', biome, music: CITY_MOOD[biome] || 'town', ci: i, cityIdx: i, gateNorth: { y: 1, badge: i } });
   return m;
 }
 function cityInterior(W, i, kind) {
   const c = W.cities[i]; const back = `city${i}`;
-  const outside = { gym: [7, 8], mend: [22, 8], lab: [6, 18], house: [11, 18], depot: [22, 18] }[kind];
+  const outside = doorOutside(W, back, kind);
   let m;
   const base = { ci: i, cityIdx: i, musicKey: W.id + ':' + back };
   if (kind === 'mend') {
@@ -238,7 +278,7 @@ function cityInterior(W, i, kind) {
     for (let x = 3; x <= 11; x++) if (x < 6 || x > 8) { m.set(x, 14, T.BARRIER); m.set(x, 9, T.BARRIER); }
     const lines = W.lines.filter((l) => l.type === c.type && l.li >= 3).map((l) => l.li); const pool = lines.length ? lines : W.routeLines(i + 1);
     const L = W.leaderLevel(i);
-    [[6, 13, 'right', 0], [8, 8, 'left', 1]].forEach(([x, y, dir, k]) => { const nm = W.trainerName(hash(c.name + 'g' + k)); m.objs.push({ x, y, kind: 'trainer', dir, sight: 3, key: `g${i}t${k}`, name: nm.name, cls: 'Hall ' + W.classes[Math.min(2 + k + Math.floor(i / 2), W.classes.length - 1)], team: W.makeTeam(hash(W.id + 'gt' + i + k), pool, 2, L - 3 + k), money: L * 30, qci: i, tip: tipLines(W, i, 4 + k, 1)[0] }); });
+    [[6, 13, 'right', 0], [8, 8, 'left', 1]].forEach(([x, y, dir, k]) => { const nm = W.trainerName(hash(c.name + 'g' + k)); m.objs.push({ x, y, kind: 'trainer', dir, sight: 3, key: `g${i}t${k}`, name: nm.name, cls: 'Hall ' + W.classes[Math.min(2 + k + Math.floor(i / 2), W.classes.length - 1)], team: W.makeTeam(hash(W.id + SEED + 'gt' + i + k), pool, 2, L - 3 + k), money: L * 30, qci: i, tip: tipLines(W, i, 4 + k, 1)[0] }); });
     m.objs.push(npc(7, 3, { kind: 'leader', ci: i, name: c.leader, pal: { shirt: null, hat: null } }));
     m.objs.push(npc(4, 17, { kind: 'gymguide', ci: i, name: 'Hall Guide', dir: 'right' }));
     m.entry = { x: 7, y: 18 };

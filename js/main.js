@@ -8,7 +8,9 @@ import { audio } from './core/audio.js';
 import { ui } from './game/ui.js';
 import { getWorld, topics } from './game/content.js';
 import { World } from './game/world.js';
+import { setWorldSeed } from './game/maps.js';
 import './game/events.js';
+import './game/learn.js';
 import { net, netui } from './game/net.js';
 import { monsterCanvas, itemIcon } from './core/sprites.js';
 import { esc, R, hash } from './core/rng.js';
@@ -51,6 +53,7 @@ const pad = document.getElementById('dpad');
 if (pad) { const dirs = ['up', 'down', 'left', 'right']; const setDir = (e) => { const r = pad.getBoundingClientRect(); const x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2; for (const d of dirs) input.setTouch(d, false); if (Math.hypot(x, y) < 8) return; input.setTouch(Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : y > 0 ? 'down' : 'up', true); };
   pad.addEventListener('pointerdown', (e) => { if (editingControls()) return; e.preventDefault(); audio.init(); pad.setPointerCapture(e.pointerId); setDir(e); }); pad.addEventListener('pointermove', (e) => { if (e.buttons && !editingControls()) setDir(e); }); const end = () => dirs.forEach((d) => input.setTouch(d, false)); pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end); }
 const unlock = () => audio.init(); addEventListener('keydown', unlock); addEventListener('pointerdown', unlock);
+input.onRunToggle = (p, on) => { audio.sfx(on ? 'select' : 'back'); ui.toast(on ? '🏃 Auto-run ON (double-tap Run to turn off)' : '🚶 Auto-run OFF', 1600); document.querySelector('#touch [data-b="run"]')?.classList.toggle('on', input.runLock[0]); };
 addEventListener('gamepadconnected', (e) => ui.toast(`🎮 Controller ${e.gamepad.index + 1} connected`));
 
 // ------------------------------------------------------------ PWA
@@ -108,6 +111,7 @@ async function titleMenu() {
   if (installEvt) items.push(['install', '⬇ Install app']);
   else if (/iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone) items.push(['ios', '⬇ Install on iPhone/iPad']);
   const c = await ui.choose(null, items.map(([, h]) => ({ html: h })), { cls: 'titlemenu', cancel: false });
+  if (c < 0 || !G.title) return; // menu was replaced (e.g. the install option appeared)
   const k = items[c][0];
   if (k === 'continue') { const pick = await ui.choose('Choose a save', slots.map((s, i) => ({ html: slotLabel(s, i), disabled: !s })), { cls: 'slots' }); if (pick >= 0) return startGame(pick, readSlot(pick)); }
   if (k === 'new') return newGameFlow();
@@ -131,7 +135,7 @@ async function newGameFlow() {
 }
 function startGame(slot, save) {
   save = migrate(save); G.slot = slot; G.save = save; G.title = false; G.busy = 0;
-  G.W = getWorld(save.topic || topics()[0].id);
+  setWorldSeed(save.seed); G.W = getWorld(save.topic || topics()[0].id);
   input.setPlayers(save.players.length); save.players.forEach((_, i) => input.assignPad(i, i));
   if (!G.world) G.world = new World();
   ui.closeAll(); G.scene = G.world; G.world.load(save.map, save.pos);
@@ -146,12 +150,15 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; G.t += dt;
   input.update(dt); ui.update();
+  // safety net: never leave the player frozen if something finished without releasing control
+  if (G.busy < 0) G.busy = 0;
+  if (G.busy > 0 && !ui.open && !G.battle && G.scene === G.world && !G.warping) { G.stuckT = (G.stuckT || 0) + dt; if (G.stuckT > 5) { console.warn('Hakma: releasing stuck input lock'); G.busy = 0; G.stuckT = 0; } } else G.stuckT = 0;
   try { G.scene?.update(dt); G.scene?.render(g); } catch (e) { console.error(e); }
   requestAnimationFrame(frame);
 }
 document.fonts?.load('8px "Press Start 2P"').finally(() => {
   document.getElementById('boot')?.remove();
-  G.title = true; G.scene = titleScene; audio.play('title', 'hakma-title', 'title'); titleMenu(); if (CONFIG.ONLINE) net.init();
+  G.title = true; G.scene = titleScene; audio.play('title', 'hakma-title', 'title'); titleMenu(); if (CONFIG.ONLINE) { net.init(); fetch((CONFIG.SERVER_URL || '') + '/api/info').then((r) => r.json()).then((i) => { if (typeof i.externalLinks === 'boolean') CONFIG.EXTERNAL_LINKS = i.externalLinks; }).catch(() => {}); }
   requestAnimationFrame(frame);
 });
 window.HAKMA = G; // handy for debugging from the console

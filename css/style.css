@@ -179,3 +179,21 @@ body.editctl #touch > * { outline: 2px dashed #9ff3ff; outline-offset: 4px; opac
 body.editctl #touch > .ctlsel { outline: 3px solid #ffe14c; box-shadow: 0 0 18px #ffe14c; }
 #ctlbar { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 30; width: min(94vw, 560px); background: #1c1440; border: 2px solid #fff; padding: 8px 10px; font: 14px system-ui, sans-serif; color: #fff; display: flex; flex-direction: column; gap: 6px; }
 #ctlbar b { color: #ffe14c; font-weight: 600; } #ctlbar .r { display: flex; flex-wrap: wrap; gap: 6px; } #ctlbar button { font: 14px system-ui, sans-serif; padding: 6px 10px; text-align: center; }
+#touch button.run.on { background: #8a6a10; border-color: #ffd23f; color: #fff6c0; }
+.rmap { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0.6em; align-items: start; }
+.rmap canvas { width: 100%; image-rendering: pixelated; border: calc(var(--px) * 2) solid #000; }
+.rlist { display: flex; flex-direction: column; gap: 0.2em; } .rlist small { opacity: 0.7; }
+.rlist .skills { display: flex; gap: 0.6em; flex-wrap: wrap; margin-top: 0.4em; } .rlist .skills span { opacity: 0.5; } .rlist .skills span.on { opacity: 1; color: var(--ok); }
+body.portrait .rmap { grid-template-columns: 1fr; }
+/* learn more */
+.term.tbtn { text-align: left; width: 100%; color: inherit; font: inherit; cursor: pointer; }
+.term.tbtn .more { float: right; font-style: normal; opacity: 0.6; }
+.term.tbtn.sel, .term.tbtn:hover { background: #1c1240; outline: calc(var(--px)) solid var(--acc); }
+.lm h3 { margin: 0.6em 0 0.25em; color: var(--acc); }
+.lm-def { font-size: 1.1em; }
+.lm-ex { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 0.35em; }
+.lm-ex li { background: #0d0820; padding: 0.3em 0.45em; border-left: calc(var(--px) * 2) solid var(--ok); white-space: pre-wrap; }
+.lm-mon { display: flex; gap: 0.6em; align-items: center; } .lm-mon img { width: 64px; height: 64px; image-rendering: pixelated; }
+.lm-links { flex-wrap: wrap; }
+.qfeedback .lmore { display: block; margin-top: 0.4em; width: 100%; }
+.qfeedback .lmore.sel { outline: calc(var(--px)) solid var(--acc); }

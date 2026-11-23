@@ -5,4 +5,7 @@ export const CONFIG = {
   VERSION: '1.0.0',
   // Online features (accounts, friends, online co-op, cloud saves). Needs the Hakma server. Set to true when you deploy the server.
   ONLINE: false,
+  // "Learn more" screens can open outside resources (official docs, Wikipedia, Khan Academy...) in a new browser tab.
+  // Admin switch: set to false to hide every external link. When ONLINE is true, the admin dashboard setting overrides this.
+  EXTERNAL_LINKS: true,
 };

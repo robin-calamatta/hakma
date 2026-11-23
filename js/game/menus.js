@@ -7,7 +7,11 @@ import { esc, clamp, R, sleep } from '../core/rng.js';
 import { TYPES, beats, weakTo } from '../content/types.js';
 import { questList, objective } from './events.js';
 import { monRow, evolveScene } from './battle.js';
-import { checkEvolve, evolve } from './state.js';
+import { checkEvolve, evolve, FIELD_SKILLS, tmMove } from './state.js';
+import { BIOMES } from '../core/sprites.js';
+import { biomeOf, worldSeed } from './maps.js';
+import { learnMore, externalOn } from './learn.js';
+import { hash, rng } from '../core/rng.js';
 import { itemIcon } from '../core/sprites.js';
 import { CONFIG } from '../config.js';
 import { editControls } from '../core/touchlayout.js';
@@ -19,12 +23,13 @@ export async function mainMenu(pi = 0) {
   for (;;) {
     const online = G.net?.online;
     let items = [
-      ['team', '◈ Team'], ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['mastery', '▲ Mastery'],
+      ['team', '◈ Team'], ['map', '🗺 Map'], ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['mastery', '▲ Mastery'],
       ['friends', `👥 Friends & Co-op${online ? ' <i class="dot on"></i>' : ''}`], ['players', '🎮 Local Players'], ['save', '💾 Save'], ['settings', '⚙ Settings'], ['help', '? Help & Legal'], ['title', '⏏ Title Screen'],
     ];
     if (!CONFIG.ONLINE) items = items.filter(([k]) => k !== 'friends');
     const c = await ui.choose(`${S().players[pi]?.name || ''} · ¤${S().money} · Badges ${badgeCount(S())}/8 — ${objective()}`, items.map(([, h]) => ({ html: h })), { cls: 'mainmenu', start: G.menuIdx || 0, cols: 2 });
     if (c < 0) break; G.menuIdx = c; const k = items[c][0];
+    if (k === 'map') { const dest = await regionMap(); if (dest) { ui.closeAll(); G.busy--; await G.events.fly(dest); return; } }
     if (k === 'team') await team(pi); if (k === 'dex') await dex(); if (k === 'bag') await bag(pi); if (k === 'codex') await codex(); if (k === 'quests') await quests(); if (k === 'mastery') await mastery();
     if (k === 'friends') await G.netui.friends(); if (k === 'players') await players(); if (k === 'settings') await settings(); if (k === 'help') await help();
     if (k === 'save') { G.autosave(true); ui.toast('Game saved' + (CONFIG.ONLINE && G.net?.authed ? ' · synced to cloud' : '')); }
@@ -43,14 +48,17 @@ export async function team(pi = 0) {
 }
 async function monMenu(p, k) {
   const P = S().players[p]; const m = P.party[k]; if (!m) return;
-  const c = await ui.choose(`${monName(W(), m)} — Lv ${m.lvl}`, ['Summary', 'Move to front', 'Give nickname', 'Use item', 'Back']);
+  const walking = p === 0 && S().follower === m.uid;
+  const opts = ['Summary', 'Move to front', 'Give nickname', 'Use item', ...(p === 0 ? [walking ? '🐾 Stop walking with me' : '🐾 Walk with me'] : []), 'Back'];
+  const c = await ui.choose(`${monName(W(), m)} — Lv ${m.lvl}`, opts);
+  if (opts[c] && opts[c].startsWith('🐾')) { S().follower = walking ? null : m.uid; G.world?.initFollower(); if (!walking) G.world?.emote('♥'); ui.toast(walking ? `${monName(W(), m)} hops back into its capsule.` : `${monName(W(), m)} will walk with you!`); return; }
   if (c === 0) await summary(m);
   if (c === 1) { P.party.splice(k, 1); P.party.unshift(m); }
   if (c === 2) { const n = await ui.prompt('Nickname (blank to reset)', m.nick || '', 12); m.nick = n && n !== W().species[m.sp].name ? n : null; }
   if (c === 3) await useItemOn(p, m);
 }
 export async function summary(m, readonly) {
-  const w = W(); const sp = w.species[m.sp]; const st = stats(w, m); const mv = movesOf(w, m); const all = sp.moves;
+  const w = W(); const sp = w.species[m.sp]; const st = stats(w, m); const mv = movesOf(w, m); const all = sp.moves.concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
   const line = w.lines[sp.li]; const term = w.terms.find((t) => t.id === sp.termId) || w.terms.find((t) => t.term.toLowerCase() === sp.concept.toLowerCase());
   await ui.panel({ title: esc(monName(w, m)), wide: true, cls: 'summary', render: () => `<div class="pv"><img class="big" src="${G.mini(sp)}"><div>
     <h3>${esc(sp.name)} <span class="lv">Lv${m.lvl}</span></h3><p><span class="type t-${sp.type}">${TYPES[sp.type].name}</span> <span class="dim">Stage ${sp.stage + 1}/${sp.stages}${sp.evolveAt ? ` · evolves at Lv ${sp.evolveAt}` : ''}</span></p>
@@ -58,10 +66,54 @@ export async function summary(m, readonly) {
     <p class="dim">Strong vs ${TYPES[beats(sp.type)].name} · Weak vs ${TYPES[weakTo(sp.type)].name} · Line: ${line.names.map(esc).join(' → ')}</p>
     <div class="stats"><span>HP ${Math.ceil(m.hp)}/${st.hp}</span><span>ATK ${st.atk}</span><span>DEF ${st.def}</span><span>SPD ${st.spd}</span></div>
     <div class="xpbar"><i style="width:${(m.xp / xpToNext(m.lvl)) * 100}%"></i></div><p class="dim">XP ${m.xp}/${xpToNext(m.lvl)}</p>
-    <div class="moves">${all.map((x) => `<div class="mv ${x.lvl > m.lvl ? 'locked' : ''}"><b>${esc(x.name)}</b> <span class="type t-${x.type}">${x.kind === 'boost' ? 'Boost' : TYPES[x.type].name + ' ' + x.power}</span>${x.lvl > m.lvl ? ` <small>Lv ${x.lvl}</small>` : ''}</div>`).join('')}</div>
-    </div></div><button data-nav data-act="__close">Close</button>` });
+    <div class="moves">${all.map((x) => `<div class="mv ${x.lvl > m.lvl ? 'locked' : ''}"><b>${x.tm ? '💿 ' : ''}${esc(x.name)}</b> <span class="type t-${x.type}">${x.kind === 'boost' ? 'Boost' : TYPES[x.type].name + ' ' + x.power}</span>${x.lvl > m.lvl ? ` <small>Lv ${x.lvl}</small>` : ''}</div>`).join('')}</div>
+    </div></div><div class="row">${term ? '<button data-nav data-act="learn">📖 Learn more</button>' : ''}<button data-nav data-act="__close">Close</button></div>`, actions: { learn: async () => { await learnMore(term); } } });
   void mv; void readonly;
 }
+
+// ------------------------------------------------------------ region map + Soar
+function regionNodes() {
+  const w = W(); const r = rng(hash(w.id + worldSeed() + 'regionmap')); const nodes = [];
+  let x = 0.5;
+  nodes.push({ id: 'hometown', name: 'Origin Town', x, y: 0.93, biome: biomeOf(w, 0), home: true });
+  for (let i = 0; i < 8; i++) { x = Math.max(0.16, Math.min(0.84, x + (r() - 0.5) * 0.5)); nodes.push({ id: 'city' + i, ci: i, name: w.cities[i].name, theme: w.cities[i].theme, x, y: 0.82 - i * 0.095, biome: biomeOf(w, i) }); }
+  nodes.push({ id: 'summit', name: 'Mastery Summit', x: 0.5, y: 0.05, biome: 'crystal', summit: true });
+  return nodes;
+}
+function whereNow() { const id = S().map; let m; if ((m = id.match(/^city(\d)/))) return 'city' + m[1]; if ((m = id.match(/^route(\d)/))) return 'route' + m[1]; if (id === 'summit') return 'summit'; return 'hometown'; }
+function drawRegion(cv, sel) {
+  const g = cv.getContext('2d'); const Wd = cv.width, Ht = cv.height; const nodes = regionNodes(); const here = whereNow(); const s = S();
+  const P = (n) => [n.x * Wd, n.y * Ht];
+  g.fillStyle = '#16304a'; g.fillRect(0, 0, Wd, Ht);
+  const rr = rng(hash(W().id + worldSeed() + 'coast')); for (let i = 0; i < 260; i++) { g.fillStyle = 'rgba(120,180,220,' + (0.05 + rr() * 0.08) + ')'; g.fillRect(rr() * Wd, rr() * Ht, 2, 1); }
+  // land: a blob around each node, coloured by that place's biome
+  nodes.forEach((n) => { const [x, y] = P(n); const B = BIOMES[n.biome] || BIOMES.meadow; for (let k = 0; k < 7; k++) { g.fillStyle = k % 2 ? B.g : B.g2; g.beginPath(); g.ellipse(x + (k - 3) * 7, y + ((k * 5) % 9) - 4, 34 - k, 22 - (k % 3) * 2, 0, 0, 7); g.fill(); } });
+  // routes
+  g.setLineDash([4, 3]); g.lineWidth = 3;
+  for (let i = 1; i < nodes.length; i++) { const [a, b] = [P(nodes[i - 1]), P(nodes[i])]; const r = i; const known = r === 1 || s.flags['visit' + (i - 2)]; g.strokeStyle = known ? '#f4e2a8' : 'rgba(244,226,168,0.3)'; g.beginPath(); g.moveTo(a[0], a[1]); g.quadraticCurveTo((a[0] + b[0]) / 2 + (i % 2 ? 18 : -18), (a[1] + b[1]) / 2, b[0], b[1]); g.stroke(); g.setLineDash([]); g.fillStyle = '#ffffffaa'; g.font = '7px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('R' + r, (a[0] + b[0]) / 2 + (i % 2 ? 22 : -22), (a[1] + b[1]) / 2); g.setLineDash([4, 3]); }
+  g.setLineDash([]);
+  nodes.forEach((n) => {
+    const [x, y] = P(n); const visited = n.home || (n.summit ? s.badges.every(Boolean) : s.flags['visit' + n.ci]); const badge = n.ci !== undefined && s.badges[n.ci];
+    g.fillStyle = '#14101c'; g.fillRect(x - 7, y - 7, 14, 14); g.fillStyle = visited ? (n.summit ? '#b36bff' : '#ff5d73') : '#555a6a'; g.fillRect(x - 5, y - 5, 10, 10);
+    if (badge) { g.fillStyle = '#ffd23f'; g.fillRect(x + 4, y - 8, 4, 4); }
+    if (n.id === sel) { g.strokeStyle = '#ffe14c'; g.lineWidth = 2; g.strokeRect(x - 10, y - 10, 20, 20); }
+    g.font = '8px "VT323"'; g.textAlign = x > Wd * 0.6 ? 'right' : 'left'; const tx = x > Wd * 0.6 ? x - 12 : x + 12;
+    g.fillStyle = '#000000aa'; g.fillText(visited ? n.name : '???', tx + 1, y + 4); g.fillStyle = visited ? '#ffffff' : '#9a9aaa'; g.fillText(visited ? n.name : '???', tx, y + 3);
+    if (here === n.id) { g.fillStyle = '#4cf0ff'; g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x - 5, y - 17); g.lineTo(x + 5, y - 17); g.fill(); }
+  });
+  const m = here.match(/^route(\d)/); if (m) { const i = +m[1]; const [a, b] = [P(nodes[i - 1]), P(nodes[i])]; g.fillStyle = '#4cf0ff'; g.beginPath(); g.arc((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 5, 0, 7); g.fill(); }
+  g.fillStyle = '#ffffffcc'; g.font = '8px "Press Start 2P"'; g.textAlign = 'left'; g.fillText(W().region.toUpperCase(), 8, 14);
+}
+export async function regionMap() {
+  const nodes = regionNodes().filter((n) => !n.summit); const s = S(); const canFly = !!s.skills?.fly; let sel = whereNow(); let dest = null;
+  const visited = (n) => n.home || s.flags['visit' + n.ci];
+  await ui.panel({ title: `Region Map${canFly ? ' — choose a city to Soar' : ''}`, wide: true, cls: 'regionmap',
+    render: () => `<div class="rmap"><canvas width="300" height="270"></canvas><div class="rlist"><p class="dim">${canFly ? 'Soar instantly to any place you have visited.' : 'Earn the Soar Disc from the 5th Mastery Hall Leader to fly between cities.'}</p>${nodes.map((n) => `<button data-nav data-act="go" data-arg="${n.id}" ${visited(n) ? '' : 'disabled'}>${visited(n) ? (canFly ? '✈ ' : '◆ ') + esc(n.name) : '??? (not visited)'}${n.theme && visited(n) ? `<small> · ${esc(n.theme)}</small>` : ''}</button>`).join('')}<div class="skills">${Object.entries(FIELD_SKILLS).map(([k, v]) => `<span class="${s.skills?.[k] ? 'on' : ''}">${s.skills?.[k] ? '✔' : '✖'} ${v.name}</span>`).join('')}</div></div></div>`,
+    actions: { go: async (id) => { if (!canFly) { sel = id; ui.toast('You need the Soar Disc to fly.'); return; } const n = nodes.find((q) => q.id === id); if (await ui.confirm(`Soar to ${n.name}?`)) { dest = id; return 'close'; } } } });
+  return dest;
+}
+function hookRegionCanvas() { const obs = new MutationObserver(() => { const cv = document.querySelector('.regionmap canvas'); if (cv && !cv.dataset.drawn) { cv.dataset.drawn = 1; drawRegion(cv, whereNow()); } }); obs.observe(document.getElementById('ui'), { childList: true, subtree: true }); }
+if (typeof document !== 'undefined') setTimeout(hookRegionCanvas, 0);
 
 // ------------------------------------------------------------ dex
 export async function dex() {
@@ -76,10 +128,18 @@ export async function dex() {
 export async function bag(pi = 0) {
   await ui.panel({ title: `Bag · ¤${S().money}`, render: () => { const ids = Object.keys(S().bag).filter((id) => S().bag[id] > 0 && ITEMS[id]);
     return ids.length ? `<div class="ilist">${ids.map((id) => `<button data-nav data-act="use" data-arg="${id}" class="irow"><img class="ico" src="${itemIcon(id)}"><b>${ITEMS[id].name}</b><span class="cnt">×${S().bag[id]}</span><small>${ITEMS[id].desc}</small></button>`).join('')}</div>` : '<p>Empty.</p>'; },
-    actions: { use: async (id) => { const it = ITEMS[id]; if (it.kind === 'cube') { ui.toast('Use cubes during wild battles.'); return; } let p = pi; if (S().players.length > 1) { const c = await ui.choose('Whose team?', S().players.map((q) => q.name)); if (c < 0) return; p = c; } await itemTarget(p, id); } } });
+    actions: { use: async (id) => { const it = ITEMS[id]; if (it.kind === 'cube') { ui.toast('Use cubes during wild battles.'); return; }
+      if (it.kind === 'tm') { let p = pi; if (S().players.length > 1) { const c = await ui.choose('Whose team?', S().players.map((q) => q.name)); if (c < 0) return; p = c; } await teachTM(p, id); return; } let p = pi; if (S().players.length > 1) { const c = await ui.choose('Whose team?', S().players.map((q) => q.name)); if (c < 0) return; p = c; } await itemTarget(p, id); } } });
+}
+async function teachTM(p, id) {
+  const it = ITEMS[id], w = W(); const P = S().players[p];
+  const c = await ui.choose(`Teach ${it.move} (${TYPES[it.type].name}, 85 power) to which monster?`, P.party.map((m) => ({ html: monRow(w, m), disabled: (m.tms || []).includes(id) })), { cls: 'teamlist' }); if (c < 0) return;
+  const m = P.party[c]; m.tms = m.tms || [];
+  if (m.tms.length >= 2) { const r = await ui.choose(`${monName(w, m)} already knows 2 disc moves. Forget one?`, m.tms.map((t) => ITEMS[t]?.move || t)); if (r < 0) return; m.tms.splice(r, 1); }
+  m.tms.push(id); audio.sfx('levelup'); ui.toast(`${monName(w, m)} learned ${it.move}!`); G.autosave();
 }
 async function useItemOn(p, m) {
-  const ids = Object.keys(S().bag).filter((id) => S().bag[id] > 0 && ITEMS[id] && ITEMS[id].kind !== 'cube');
+  const ids = Object.keys(S().bag).filter((id) => S().bag[id] > 0 && ITEMS[id] && ITEMS[id].kind !== 'cube' && ITEMS[id].kind !== 'tm');
   if (!ids.length) { ui.toast('No usable items.'); return; }
   const c = await ui.choose('Use which item?', ids.map((id) => `${ITEMS[id].name} ×${S().bag[id]}`)); if (c < 0) return;
   await applyItem(ids[c], m);
@@ -108,9 +168,10 @@ export async function codex() {
       return `<div class="tabs">${w.cities.slice(0, reach + 1).map((x, k) => `<button data-nav data-act="city" data-arg="${k}" class="${k === ci ? 'on' : ''}">${k + 1}</button>`).join('')}</div>
       <h3>${esc(c.name)} — ${esc(c.theme)} <span class="dim">(${learned}/${c.terms.length} learned)</span></h3>
       <div class="row"><button data-nav data-act="drill" data-arg="${ci}">▶ Drill this chapter</button><button data-nav data-act="interview">🎤 Mock interview</button><button data-nav data-act="review">↺ Review missed (${S().missed.length})</button></div>
-      <div class="terms">${c.terms.map((t) => `<div class="term ${S().codex[t.id] ? 'got' : ''}"><b>${S().codex[t.id] ? '✔ ' : ''}${esc(t.term)}</b><span>${esc(t.def)}</span></div>`).join('')}
+      <p class="dim">Tap a term for examples${externalOn() ? ' and links' : ''}.</p>
+      <div class="terms">${c.terms.map((t) => `<button data-nav data-act="learn" data-arg="${t.id}" class="term tbtn ${S().codex[t.id] ? 'got' : ''}"><b>${S().codex[t.id] ? '✔ ' : ''}${esc(t.term)} <i class="more">📖</i></b><span>${esc(t.def)}</span></button>`).join('')}
       ${(c.pool || []).filter((q) => !q.term).slice(0, 40).map((q) => `<div class="term qa"><b>Q: ${esc(q.q)}</b><span>A: ${esc(q.a)} — <i>${esc(q.expl)}</i></span></div>`).join('')}</div>`; },
-    actions: { city: (k) => { ci = +k; }, drill: async (k) => { await drill(`${w.cities[+k].name} drill`, () => w.pickQ(+k, S(), { mix: false, review: 0.15 }), 10); }, interview: async () => { await drill('Mock interview', () => w.pickQ(reach >= 7 && S().champion ? 'final' : reach, S(), { review: 0.3 }), 15, true); }, review: async () => { await reviewDrill(); } } });
+    actions: { city: (k) => { ci = +k; }, learn: async (id) => { await learnMore(w.terms.find((t) => t.id === id)); }, drill: async (k) => { await drill(`${w.cities[+k].name} drill`, () => w.pickQ(+k, S(), { mix: false, review: 0.15 }), 10); }, interview: async () => { await drill('Mock interview', () => w.pickQ(reach >= 7 && S().champion ? 'final' : reach, S(), { review: 0.3 }), 15, true); }, review: async () => { await reviewDrill(); } } });
 }
 export async function reviewDrill() {
   const w = W(); const ids = S().missed.filter((id) => w.qIndex[id]); if (!ids.length) { await ui.say('No missed questions to review. Nice!'); return; }
@@ -149,7 +210,7 @@ export async function mastery() {
 export async function players() {
   await ui.panel({ title: 'Local Players (same screen)', wide: true, render: () => `<div class="plist">${S().players.map((p, k) => `<div class="prow"><span class="sw" style="background:${p.color}"></span><b>P${k + 1} ${esc(p.name)}</b><span class="dim">${p.party.length} in team · ${p.box.length} in box</span>${k > 0 ? `<button data-nav data-act="rm" data-arg="${k}">Remove</button>` : ''}</div>`).join('')}</div>
     ${S().players.length < 4 ? '<button data-nav data-act="add">+ Add a local player</button>' : ''}
-    <div class="ctrl"><h4>Controls</h4><p><b>1 player:</b> Arrows/WASD move · Z/Space/Enter = A · X/Esc = B (hold to run) · Tab/M = Menu</p><p><b>2+ players:</b> P1 WASD + F (A) / G (B) / Tab (menu) · P2 Arrows + . (A) / , (B) / / (menu) · P3 &amp; P4 use gamepads (each new pad joins the next slot). Touch controls drive P1.</p><p>Everyone shares one screen and travels together. In battle, every player's lead monster fights side by side and each player answers their own questions.</p></div>`,
+    <div class="ctrl"><h4>Controls</h4><p><b>1 player:</b> Arrows/WASD move · Z/Space/Enter = A · X/Esc = B · Shift/C = Run (double-tap to lock running on/off; on touch, double-tap RUN) · Tab/M = Menu</p><p><b>Field skills:</b> leaders teach <i>Slice</i> (cut thin trees), <i>Smash</i> (break cracked rocks) and <i>Soar</i> (fly from the 🗺 Map to towns you've visited). Face the obstacle and press A. Leaders also hand out reusable 💿 Technique Discs.</p><p><b>Partner:</b> your chosen monster walks behind you — talk to it for tips. Pick a partner in Team → 🐾 Walk with me.</p><p><b>Learn more:</b> after any question, or by tapping a Codex term, see extra examples, worked questions and (if enabled) outside resources.</p><p><b>2+ players:</b> P1 WASD + F (A) / G (B) / Tab (menu) · P2 Arrows + . (A) / , (B) / / (menu) · P3 &amp; P4 use gamepads (each new pad joins the next slot). Touch controls drive P1.</p><p>Everyone shares one screen and travels together. In battle, every player's lead monster fights side by side and each player answers their own questions.</p></div>`,
     actions: { add: async () => { await addLocal(); }, rm: async (k) => { if (await ui.confirm(`Remove P${+k + 1} ${S().players[+k].name}? Their monsters will be lost.`)) { S().players.splice(+k, 1); S().players.forEach((p, i) => { p.color = ['#e04848', '#3a7ae0', '#30b060', '#e0a020'][i]; }); input.setPlayers(S().players.length); G.world.load(S().map, S().pos); } } } });
 }
 async function addLocal() {
@@ -166,12 +227,12 @@ async function addLocal() {
 
 // ------------------------------------------------------------ settings & help
 export async function settings() {
-  const st = G.settings; const keys = ['music', 'sfx', 'timer', 'timerSec', 'textSpeed', 'full'];
-  const lbl = { music: 'Music volume', sfx: 'Sound volume', timer: 'Question timer', timerSec: 'Timer length', textSpeed: 'Text speed', full: 'Fullscreen' };
-  const val = (k) => k === 'music' || k === 'sfx' ? '▮'.repeat(Math.round(st[k] * 10)) + '▯'.repeat(10 - Math.round(st[k] * 10)) : k === 'timer' ? (st.timer ? 'On' : 'Off (relaxed)') : k === 'timerSec' ? st.timerSec + 's' : k === 'textSpeed' ? ['', 'Slow', 'Normal', 'Fast', 'Instant'][st.textSpeed] : document.fullscreenElement ? 'On' : 'Off';
+  const st = G.settings; const keys = ['music', 'sfx', 'timer', 'timerSec', 'textSpeed', 'daynight', 'full'];
+  const lbl = { music: 'Music volume', sfx: 'Sound volume', timer: 'Question timer', timerSec: 'Timer length', textSpeed: 'Text speed', daynight: 'Day / night cycle', full: 'Fullscreen' };
+  const val = (k) => k === 'music' || k === 'sfx' ? '▮'.repeat(Math.round(st[k] * 10)) + '▯'.repeat(10 - Math.round(st[k] * 10)) : k === 'timer' ? (st.timer ? 'On' : 'Off (relaxed)') : k === 'timerSec' ? st.timerSec + 's' : k === 'textSpeed' ? ['', 'Slow', 'Normal', 'Fast', 'Instant'][st.textSpeed] : k === 'daynight' ? (st.daynight === false ? 'Off (always day)' : 'On (real time)') : document.fullscreenElement ? 'On' : 'Off';
   const change = (k, d) => {
     if (k === 'music' || k === 'sfx') { st[k] = clamp(Math.round((st[k] + d * 0.1) * 10) / 10, 0, 1); audio.setVolume(k, st[k]); }
-    if (k === 'timer') st.timer = !st.timer; if (k === 'timerSec') st.timerSec = clamp(st.timerSec + d * 5, 10, 60); if (k === 'textSpeed') st.textSpeed = clamp(st.textSpeed + d, 1, 4);
+    if (k === 'timer') st.timer = !st.timer; if (k === 'daynight') st.daynight = st.daynight === false; if (k === 'timerSec') st.timerSec = clamp(st.timerSec + d * 5, 10, 60); if (k === 'textSpeed') st.textSpeed = clamp(st.textSpeed + d, 1, 4);
     if (k === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
     saveSettings(st); audio.sfx('blip');
   };
