@@ -11,6 +11,7 @@ import { World } from './game/world.js';
 import { setWorldSeed } from './game/maps.js';
 import './game/events.js';
 import './game/learn.js';
+import './game/wardrobe.js';
 import { net, netui } from './game/net.js';
 import { monsterCanvas, itemIcon } from './core/sprites.js';
 import { esc, R, hash } from './core/rng.js';
@@ -23,7 +24,7 @@ audio.setVolume('music', G.settings.music); audio.setVolume('sfx', G.settings.sf
 const miniCache = new Map();
 G.mini = (sp) => { const k = sp.uidKey; if (!miniCache.has(k)) miniCache.set(k, monsterCanvas(sp, false).toDataURL()); return miniCache.get(k); };
 G.icons = itemIcon;
-G.autosave = (force) => { if (!G.save || G.title) return; writeSlot(G.slot, G.save); if (CONFIG.ONLINE) net.pushSave(G.slot, G.save, force); };
+G.autosave = (force) => { if (!G.save || G.title) return; writeSlot(G.slot, G.save); if (CONFIG.ONLINE || CONFIG.CLOUD_SAVES) net.pushSave(G.slot, G.save, force); };
 setInterval(() => G.autosave(), 30000);
 addEventListener('beforeunload', () => G.autosave(true));
 document.addEventListener('visibilitychange', () => { if (document.hidden) G.autosave(true); });
@@ -114,7 +115,7 @@ async function titleMenu() {
   const slots = listSlots(); const any = slots.some(Boolean);
   const items = [];
   if (any) items.push(['continue', '▶ Continue']);
-  items.push(['new', '✚ New Game']); if (CONFIG.ONLINE) items.push(['online', net.authed ? `👥 Online: ${esc(net.user.username)}` : '👥 Log in / Create account']); items.push(['settings', '⚙ Settings'], ['help', '? Help & Legal']);
+  items.push(['new', '✚ New Game']); if (CONFIG.ONLINE) items.push(['online', net.authed ? `👥 Online: ${esc(net.user.username)}` : '👥 Log in / Create account']); else if (CONFIG.CLOUD_SAVES) items.push(['online', net.authed ? `☁ Account: ${esc(net.user.username)}` : '☁ Log in / Create account']); items.push(['settings', '⚙ Settings'], ['help', '? Help & Legal']);
   if (installEvt) items.push(['install', '⬇ Install app']);
   else if (/iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone) items.push(['ios', '⬇ Install on iPhone/iPad']);
   const c = await ui.choose(null, items.map(([, h]) => ({ html: h })), { cls: 'titlemenu', cancel: false });
@@ -137,6 +138,7 @@ async function newGameFlow() {
   await ui.say(['Welcome to the world of *Hakma*!', 'Here, monsters are born from ideas — every creature embodies a concept you can learn.', 'Trainers who truly understand their monsters become unstoppable.', 'First, tell me about yourself.']);
   const name = await ui.prompt('What is your name?', '', 12);
   deleteSlot(slot); const s = newSave(name);
+  await G.wardrobe(0, { intro: true, save: s });
   await ui.say([`${name || 'Trainer'}! What a great name.`, 'Your journey begins in your bedroom. On your desk is a Study Terminal — use it to choose what you want to master.', 'Every city, monster, leader and lesson will be built around your choice. Let\'s begin!']);
   startGame(slot, s);
 }
@@ -165,7 +167,7 @@ function frame(now) {
 }
 document.fonts?.load('8px "Press Start 2P"').finally(() => {
   document.getElementById('boot')?.remove();
-  G.title = true; G.scene = titleScene; audio.play('title', 'hakma-title', 'title'); titleMenu(); if (CONFIG.ONLINE) { net.init(); fetch((CONFIG.SERVER_URL || '') + '/api/info').then((r) => r.json()).then((i) => { if (typeof i.externalLinks === 'boolean') CONFIG.EXTERNAL_LINKS = i.externalLinks; }).catch(() => {}); }
+  G.title = true; G.scene = titleScene; audio.play('title', 'hakma-title', 'title'); titleMenu(); if (CONFIG.ONLINE || CONFIG.CLOUD_SAVES) { net.init(); fetch((CONFIG.SERVER_URL || '') + '/api/info').then((r) => r.json()).then((i) => { if (typeof i.externalLinks === 'boolean') CONFIG.EXTERNAL_LINKS = i.externalLinks; }).catch(() => {}); }
   requestAnimationFrame(frame);
 });
 window.HAKMA = G; // handy for debugging from the console

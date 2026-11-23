@@ -1,8 +1,21 @@
 {
+  // Hakma on Cloudflare Workers (free): static game files + a small Worker for accounts and cloud saves.
+  // The D1 database "hakma-db" is created automatically on the first deploy (Wrangler auto-provisioning).
   "name": "hakma",
-  "compatibility_date": "2026-11-01",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-11-01",
   "assets": {
     "directory": "./",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
     "not_found_handling": "single-page-application"
-  }
+  },
+  "d1_databases": [{ "binding": "DB", "database_name": "hakma-db" }],
+  "vars": {
+    // set to "false" to stop new sign-ups
+    "ALLOW_REGISTRATION": "true",
+    // set to "false" to hide "Learn more" outside links for everyone
+    "EXTERNAL_LINKS": "true"
+  },
+  "observability": { "enabled": true }
 }

@@ -2,6 +2,7 @@
 import { TOPICS } from '../content/index.js';
 import { GEN } from '../content/generators.js';
 import { EXAMPLES } from '../content/examples/index.js';
+import { MATH_MISTAKES, MATH_MISTAKE_GEN, mistakeQuestions } from '../content/mistakes.js';
 import { hash, rng, R, shuffle, clamp } from '../core/rng.js';
 
 export const BIOME_ORDER = ['meadow', 'coast', 'forest', 'desert', 'snow', 'volcano', 'crystal', 'neon'];
@@ -56,6 +57,9 @@ function buildWorld(t) {
     (c.qs || []).forEach((q, k) => { const Q = { id: `q${ci}.${k}`, q: q[0], a: q[1], wrong: q.slice(2, -1).filter(Boolean), expl: q[q.length - 1], ci }; city.pool.push(Q); W.qIndex[Q.id] = Q; });
     W.cities.push(city);
   });
+  // "find the mistake" questions: hand-written ones join the city pools (so missed ones come back for review), maths ones are generated
+  W.cities.forEach((city) => { city.mistakes = []; city.mgen = (MATH_MISTAKE_GEN[t.id] || [])[city.ci] || []; });
+  mistakeQuestions(t.id).forEach((m, k) => { const city = W.cities[Math.min(m.ci, W.cities.length - 1)]; const [q, a, w1, w2, w3, expl] = m.t; const Q = { id: `m${city.ci}.${k}`, q, a, wrong: [w1, w2, w3], expl, ci: city.ci, mistake: true }; city.mistakes.push(Q); W.qIndex[Q.id] = Q; });
   // term-derived questions (need at least 4 terms in reach)
   W.cities.forEach((city, ci) => {
     const near = W.terms.filter((x) => Math.abs(x.ci - ci) <= 1);
@@ -112,6 +116,12 @@ function pickQuestion(W, ci, save, opt) {
   let c = maxC;
   if (final) c = R.int(0, 7); else if (opt.mix !== false && maxC > 0 && R() < 0.25) c = R.int(0, maxC - 1);
   const city = W.cities[c];
+  // ~1 in 6 questions is a "find the mistake" one when the chapter has any
+  if ((city.mistakes?.length || city.mgen?.length) && R() < 0.17) {
+    const useGen = city.mgen.length && (!city.mistakes.length || R() < 0.6);
+    if (useGen) { const [q, a, w1, w2, w3, expl] = MATH_MISTAKES[R.pick(city.mgen)](R); return fresh({ id: 'gen', q, a: String(a), wrong: [w1, w2, w3].map(String), expl, ci: c }); }
+    const pool = city.mistakes.filter((Q) => !W.recent.includes(Q.id)); if (pool.length) { const Q = R.pick(pool); W.recent.push(Q.id); W.recent = W.recent.slice(-10); return fresh(Q); }
+  }
   if (city.gen.length && (R() < 0.6 || !city.pool.length)) {
     const g = GEN[R.pick(city.gen)];
     if (g) { const [q, a, w1, w2, w3, expl] = g(R); const wrong = [...new Set([w1, w2, w3].map(String))].filter((x) => x !== String(a)); const Q = { id: 'gen', q, a: String(a), wrong, expl, ci: c }; return fresh(Q); }

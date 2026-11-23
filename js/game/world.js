@@ -15,6 +15,12 @@ const TS = 16;
 const DX = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const PEOPLE = new Set(['npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
 
+// A player's look: their saved wardrobe choices (p.look), falling back to the original per-player defaults.
+export function playerPalette(p, i) {
+  const L = p.look || {};
+  return personPalette(hash(p.name + i), { shirt: L.shirt || p.color, hair: L.hair || ['#2a1f1a', '#c07a30', '#30304a', '#a03030'][i % 4], hat: L.hat !== undefined ? L.hat : shadeHat(p.color), long: L.hairStyle ? L.hairStyle === 'long' : i % 2 === 1, skin: L.skin, pants: L.pants, hairStyle: L.hairStyle, outfit: L.outfit });
+}
+export function refreshPlayerSheets() { const w = G.world; if (!w || !w.lp) return; w.lp.forEach((lp) => { const p = G.save.players[lp.i]; if (p) lp.sheet = personSheet(playerPalette(p, lp.i)); }); }
 export class World {
   puff(x, y, col) { for (let i = 0; i < 22; i++) { const a = Math.random() * 6.28, v = 20 + Math.random() * 50; this.fx.push({ x: x * 16 + 8, y: y * 16 + 8, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, life: 0.5 + Math.random() * 0.4, c: Math.random() < 0.4 ? '#ffffff' : col }); } }
   constructor() { this.fx = []; this.t = 0; this.cam = { x: 0, y: 0 }; this.lp = []; this.objs = []; this.noEnc = 0; this.bumpT = 0; this.peerDraw = {}; }
@@ -24,7 +30,7 @@ export class World {
     // field-skill obstacles: restore, then remove the ones this save has already cleared
     if (m.obstacles) { const done = new Set((S.cleared && S.cleared[mapId]) || []); for (const [x, y, t, under] of m.obstacles) m.set(x, y, done.has(x + ',' + y) ? under : t); }
     this.objs = m.objs.map((o, i) => ({ ...o, ox: o.x, oy: o.y, px: o.x * TS, py: o.y * TS, i, wt: 1 + R() * 3, sheet: PEOPLE.has(o.kind) ? personSheet(this.palFor(o, i)) : null }));
-    this.lp = S.players.map((p, i) => { const s = (spots && spots[i]) || S.pos[i] || S.pos[0]; return { i, x: s.x, y: s.y, px: s.x * TS, py: s.y * TS, dir: s.dir || 'down', moving: false, sheet: personSheet(personPalette(hash(p.name + i), { shirt: p.color, hair: ['#2a1f1a', '#c07a30', '#30304a', '#a03030'][i], hat: shadeHat(p.color), long: i % 2 === 1 })) }; });
+    this.lp = S.players.map((p, i) => { const s = (spots && spots[i]) || S.pos[i] || S.pos[0]; return { i, x: s.x, y: s.y, px: s.x * TS, py: s.y * TS, dir: s.dir || 'down', moving: false, sheet: personSheet(playerPalette(p, i)) }; });
     // never spawn inside a wall (e.g. after a layout change)
     for (const p of this.lp) if (this.solid(p.x, p.y) && !m.warps.some((w) => w.x === p.x && w.y === p.y)) { let best = null; for (let r = 1; r < 8 && !best; r++) for (let dy = -r; dy <= r && !best; dy++) for (let dx = -r; dx <= r && !best; dx++) if (!this.solid(p.x + dx, p.y + dy) && !m.warps.some((w) => w.x === p.x + dx && w.y === p.y + dy)) best = [p.x + dx, p.y + dy]; if (best) { [p.x, p.y] = best; p.px = p.x * 16; p.py = p.y * 16; } }
     // spread co-op players who would overlap
@@ -145,6 +151,7 @@ export class World {
       if (Math.max(...xs) - Math.min(...xs) > view.w / TS - 3 || Math.max(...ys) - Math.min(...ys) > view.h / TS - 3) { if (this.bumpT <= 0) { audio.sfx('bump'); this.bumpT = 0.4; } return; }
     }
     if (warp && warp.door && G.events.doorBlocked(warp)) return;
+    if (warp && warp.stairs && !G.save.flags.topic) { G.events.roomLocked(p); return; } // pick a subject before leaving your room
     p.fx = p.x; p.fy = p.y; p.x = nx; p.y = ny; p.mt = 0; p.moving = true; p.stepT = run ? 0.1 : 0.18;
     this.followStep(p);
   }

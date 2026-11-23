@@ -22,8 +22,14 @@ export const ITEMS = {
   shard:      { name: 'Insight Shard', price: 0, desc: 'Earned by learning. Raises a monster by one level. Can\'t be used during battle.', kind: 'level' },
 };
 
-export function defaultSettings() { return { music: 0.55, sfx: 0.7, timer: true, timerSec: 25, textSpeed: 2, every: true, showControls: true }; }
-export function loadSettings() { try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem('hakma.settings') || '{}') }; } catch { return defaultSettings(); } }
+export function defaultSettings() { return { music: 0.55, sfx: 0.7, timer: false, timerV2: true, timerSec: 25, textSpeed: 2, every: true, showControls: true }; }
+export function loadSettings() {
+  try {
+    const s = { ...defaultSettings(), ...JSON.parse(localStorage.getItem('hakma.settings') || '{}') };
+    if (!s.timerV2) { s.timer = false; s.timerV2 = true; saveSettings(s); } // question timer now starts OFF (turn on in Settings)
+    return s;
+  } catch { return defaultSettings(); }
+}
 export function saveSettings(s) { localStorage.setItem('hakma.settings', JSON.stringify(s)); }
 
 export function newSave(name) {

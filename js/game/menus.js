@@ -24,14 +24,14 @@ export async function mainMenu(pi = 0) {
     const online = G.net?.online;
     let items = [
       ['team', '◈ Team'], ['map', '🗺 Map'], ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['mastery', '▲ Mastery'],
-      ['friends', `👥 Friends & Co-op${online ? ' <i class="dot on"></i>' : ''}`], ['players', '🎮 Local Players'], ['save', '💾 Save'], ['settings', '⚙ Settings'], ['help', '? Help & Legal'], ['title', '⏏ Title Screen'],
+      ['friends', `👥 Friends & Co-op${online ? ' <i class="dot on"></i>' : ''}`], ['look', '👕 Wardrobe'], ['players', '🎮 Local Players'], ['save', '💾 Save'], ['settings', '⚙ Settings'], ['help', '? Help & Legal'], ['title', '⏏ Title Screen'],
     ];
-    if (!CONFIG.ONLINE) items = items.filter(([k]) => k !== 'friends');
+    if (!CONFIG.ONLINE) items = CONFIG.CLOUD_SAVES ? items.map((it) => (it[0] === 'friends' ? ['friends', G.net?.authed ? '☁ Account & Cloud' : '☁ Log in / Cloud Save'] : it)) : items.filter(([k]) => k !== 'friends');
     const c = await ui.choose(`${S().players[pi]?.name || ''} · ¤${S().money} · Badges ${badgeCount(S())}/8 — ${objective()}`, items.map(([, h]) => ({ html: h })), { cls: 'mainmenu', start: G.menuIdx || 0, cols: 2 });
     if (c < 0) break; G.menuIdx = c; const k = items[c][0];
     if (k === 'map') { const dest = await regionMap(); if (dest) { ui.closeAll(); G.busy--; await G.events.fly(dest); return; } }
     if (k === 'team') await team(pi); if (k === 'dex') await dex(); if (k === 'bag') await bag(pi); if (k === 'codex') await codex(); if (k === 'quests') await quests(); if (k === 'mastery') await mastery();
-    if (k === 'friends') await G.netui.friends(); if (k === 'players') await players(); if (k === 'settings') await settings(); if (k === 'help') await help();
+    if (k === 'friends') await G.netui.friends(); if (k === 'look') { const pi = G.save.players.length > 1 ? await ui.choose('Whose look?', G.save.players.map((p, i) => `P${i + 1} ${esc(p.name)}`)) : 0; if (pi >= 0) await G.wardrobe(pi); } if (k === 'players') await players(); if (k === 'settings') await settings(); if (k === 'help') await help();
     if (k === 'save') { G.autosave(true); ui.toast('Game saved' + (CONFIG.ONLINE && G.net?.authed ? ' · synced to cloud' : '')); }
     if (k === 'title') { if (await ui.confirm('Save and return to the title screen?')) { G.autosave(true); ui.closeAll(); G.busy = 0; G.toTitle(); return; } }
   }

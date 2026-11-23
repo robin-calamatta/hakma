@@ -112,7 +112,7 @@ export const ui = {
       const quickT = opt.quick ?? 6;
       const keys = ['1', '2', '3', '4'];
       const long = q.opts.some((o) => String(o).length > 48) || q.q.length > 120;
-      const html = `<div class="quiz ${opt.cls || ''} ${long ? 'long' : ''}">
+      const html = `<div class="quiz ${opt.cls || ''} ${long ? 'long' : ''} ${q.q.includes('```') ? 'code' : ''}">
         <div class="qhead"><span class="qtag">${esc(opt.tag || 'Question')}${q.review ? ' · <b>Review</b>' : ''}</span>${opt.who ? `<span class="qwho">${esc(opt.who)}</span>` : ''}</div>
         <div class="qtext">${fmt(esc(q.q))}</div>
         <div class="qopts">${q.opts.map((o, i) => `<button data-nav data-i="${i}"><span class="k">${keys[i] || ''}</span>${esc(o)}</button>`).join('')}</div>
@@ -154,5 +154,5 @@ export const ui = {
   fade(on, ms = 250) { const f = document.getElementById('fade'); f.style.transitionDuration = ms + 'ms'; f.classList.toggle('on', on); return sleep(ms); },
 };
 // lightweight markup: *bold* and line breaks
-export function fmt(s) { return String(s).replace(/\*([^*]+)\*/g, '<b>$1</b>').replace(/\n/g, '<br>').replace(/`([^`]+)`/g, '<code>$1</code>'); }
+export function fmt(s) { return String(s).split('```').map((part, i) => (i % 2 ? `<pre class="qcode">${part.replace(/^\n|\n$/g, '')}</pre>` : part.replace(/\*([^*]+)\*/g, '<b>$1</b>').replace(/\n/g, '<br>').replace(/`([^`]+)`/g, '<code>$1</code>'))).join(''); }
 G.ui = ui;

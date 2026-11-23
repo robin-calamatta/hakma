@@ -216,3 +216,23 @@ body.portrait .rmap { grid-template-columns: 1fr; }
 /* status condition tags */
 .stat { display: inline-block; padding: 0 0.3em; margin-left: 0.3em; border-radius: 3px; font-size: 0.8em; color: #fff; border: 1px solid #000; }
 .st-psn { background: #9040c8; } .st-brn { background: #e0602a; } .st-sick { background: #5e9a2a; }
+/* subject picker: category step */
+.tgrid.cats { grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 0.6em; }
+.tcard.cat { min-height: 8em; align-items: center; text-align: center; justify-content: center; }
+.tcard.cat .ti { font-size: 2.4em; }
+.topics h4 { margin: 0.5em 0 0.25em; color: var(--acc); }
+/* wardrobe */
+.wd { display: flex; gap: 1em; align-items: flex-start; flex-wrap: wrap; }
+.wd-prev { display: grid; grid-template-columns: repeat(2, 64px); gap: 6px; padding: 8px; background: radial-gradient(#3a2a7a, #1a1040 75%); border: 2px solid #4a3a8a; }
+.wd-prev img { width: 64px; height: 80px; image-rendering: pixelated; }
+.wd .slist { flex: 1; min-width: 14em; }
+.sw { display: inline-block; width: 0.9em; height: 0.9em; border: 1px solid #000; vertical-align: -0.1em; margin-right: 0.3em; }
+/* find-the-mistake code blocks */
+pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; border: 1px solid #3a2f74; border-left: 3px solid #ffd23f; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 0.82em; line-height: 1.45; white-space: pre; overflow-x: auto; text-align: left; color: #d8f6ff; max-height: 40vh; }
+/* code questions: the code block scrolls inside the question instead of spilling under the answers */
+.quiz.code .qtext { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; overflow: hidden; font-size: 1.15em; }
+.quiz.code pre.qcode { flex: 1 1 auto; min-height: 3em; overflow: auto; }
+.quiz.code .qopts { flex: 0 0 auto; grid-template-columns: repeat(4, 1fr); }
+.quiz.code .qopts button { min-height: 2.1em; font-size: 1.05em; }
+@media (max-aspect-ratio: 3/4) { .quiz.code .qopts { grid-template-columns: 1fr 1fr; } }
+@media (orientation: landscape) and (max-height: 760px) { pre.qcode { font-size: 0.7em; line-height: 1.25; padding: 0.3em 0.5em; } }

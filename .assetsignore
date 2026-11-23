@@ -1,4 +1,11 @@
 .git
-.gitignore
-.assetsignore
+.github
+.wrangler
+node_modules
+worker
 wrangler.jsonc
+wrangler.toml
+.assetsignore
+*.zip
+package.json
+package-lock.json

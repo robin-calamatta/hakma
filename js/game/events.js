@@ -54,6 +54,11 @@ export const events = {
     }
     this.checkObjective(); autosave();
   },
+  async roomLocked(p) {
+    if (G.busy) return; G.busy++; audio.sfx('bump');
+    await say(['Wait — you haven\'t chosen what to study yet!', 'Use the *computer on your desk* to pick a subject before heading out.']);
+    G.busy--; const pl = G.world.lp[p.i || 0]; if (pl) pl.dir = 'left';
+  },
   checkObjective() {
     const o = objective(); if (o !== G.lastObjective) { if (G.lastObjective !== undefined) ui.toast('★ ' + o, 3600); G.lastObjective = o; }
   },
@@ -320,15 +325,35 @@ async function previewChoose(sp, text) {
   });
 }
 
+// Subject picker is two steps: pick a category, then a subject inside it (grouped so the list stays short).
+const TOPIC_GROUPS = [
+  { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, cloud, DevOps and engineering interviews.', sections: [['Programming', ['cs', 'python', 'golang', 'softeng']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
+  { id: 'elec', icon: '⚡', name: 'Electrical & Trades', blurb: 'Circuits, power and the electrician trade.', sections: [['Electrical', ['electrical', 'electrician']]] },
+  { id: 'school', icon: '🏫', name: 'School Subjects', blurb: 'Math, language arts and science by grade.', sections: [['Math', ['math-elem', 'math-middle', 'math-high']], ['Language Arts', ['ela-elem', 'ela-high']], ['Science', ['science-elem', 'physics', 'chemistry', 'biology']]] },
+];
 export async function chooseTopic() {
-  const list = topics(); const cats = [['tech', 'Tech & Engineering'], ['school', 'School Subjects']];
+  const list = topics(); const byId = Object.fromEntries(list.map((t) => [t.id, t]));
+  // any topic not placed in a group (e.g. added later) shows up under "More"
+  const placed = new Set(TOPIC_GROUPS.flatMap((g) => g.sections.flatMap((s) => s[1])));
+  const extra = list.filter((t) => !placed.has(t.id)).map((t) => t.id);
+  const groups = extra.length ? [...TOPIC_GROUPS, { id: 'more', icon: '◆', name: 'More', blurb: 'Other subjects.', sections: [['More', extra]] }] : TOPIC_GROUPS;
   const card = (t) => `<button data-nav data-act="pick" data-arg="${t.id}" class="tcard"><span class="ti">${esc(t.icon || '◆')}</span><b>${esc(t.name)}</b><small>${esc(t.level || '')}</small><span class="tb">${esc(t.blurb)}</span></button>`;
-  const picked = await new Promise((res) => {
-    ui.panel({ title: 'Choose your field of study', wide: true, cls: 'topics', cols: 3,
-      render: () => `<p class="dim">This choice shapes the whole world: its monsters, cities, leaders and lessons. Each save slot studies one topic.</p>` + cats.map(([k, label]) => `<h4>${label}</h4><div class="tgrid">${list.filter((t) => (k === 'tech' ? t.cat === 'tech' : t.cat !== 'tech')).map(card).join('')}</div>`).join(''),
-      actions: { pick: (id) => { res(id); return 'close'; } } }).then(() => res(null));
-  });
-  if (!picked) return;
+  let picked = null;
+  for (;;) {
+    const gid = await new Promise((res) => {
+      ui.panel({ title: 'Choose your field of study', wide: true, cls: 'topics', cols: 1,
+        render: () => `<p class="dim">This choice shapes the whole world: its monsters, cities, leaders and lessons. Pick a category first.</p><div class="tgrid cats">${groups.map((g) => { const n = g.sections.reduce((a, s) => a + s[1].filter((id) => byId[id]).length, 0); return `<button data-nav data-act="grp" data-arg="${g.id}" class="tcard cat"><span class="ti">${g.icon}</span><b>${esc(g.name)}</b><small>${n} subject${n === 1 ? '' : 's'}</small><span class="tb">${esc(g.blurb)}</span></button>`; }).join('')}</div>`,
+        actions: { grp: (id) => { res(id); return 'close'; } } }).then(() => res(null));
+    });
+    if (!gid) return;
+    const g = groups.find((x) => x.id === gid);
+    picked = await new Promise((res) => {
+      ui.panel({ title: `${g.icon} ${g.name}`, wide: true, cls: 'topics', cols: 3,
+        render: () => g.sections.map(([label, ids]) => { const ts = ids.map((id) => byId[id]).filter(Boolean); return ts.length ? `<h4>${esc(label)}</h4><div class="tgrid">${ts.map(card).join('')}</div>` : ''; }).join('') + `<div class="row"><button data-nav data-act="back">◀ Back to categories</button></div>`,
+        actions: { pick: (id) => { res(id); return 'close'; }, back: () => { res(null); return 'close'; } } }).then(() => res(null));
+    });
+    if (picked) break;
+  }
   const t = list.find((x) => x.id === picked);
   if (!(await ui.confirm(`Study *${t.name}* for this adventure? (You can start other topics in other save slots.)`))) return;
   S().topic = picked; S().flags.topic = 1; G.W = getWorld(picked);

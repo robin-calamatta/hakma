@@ -158,12 +158,15 @@ export function monsterCanvas(sp, back = false) {
 }
 
 // ---------------------------------------------------------------- PEOPLE
-const SKIN = ['#f6d2b0', '#e8b48a', '#c98b5e', '#9a6440', '#6e4428', '#f0c8a0'];
-const HAIR = ['#2a1f1a', '#5a3820', '#c07a30', '#e8d070', '#a03030', '#30304a', '#e0e0f0', '#3a7ad0', '#d050a0', '#40a060'];
-const CLOTH = ['#d04040', '#3070d0', '#30a050', '#e0a020', '#8040c0', '#e06090', '#20a0a0', '#505060', '#f0f0f0', '#e07030'];
+export const SKIN = ['#f6d2b0', '#e8b48a', '#c98b5e', '#9a6440', '#6e4428', '#f0c8a0'];
+export const HAIR = ['#2a1f1a', '#5a3820', '#c07a30', '#e8d070', '#a03030', '#30304a', '#e0e0f0', '#3a7ad0', '#d050a0', '#40a060'];
+export const CLOTH = ['#d04040', '#3070d0', '#30a050', '#e0a020', '#8040c0', '#e06090', '#20a0a0', '#505060', '#f0f0f0', '#e07030'];
 export function personPalette(seed, opt = {}) {
   const r = rng(seed);
-  return { skin: opt.skin || r.pick(SKIN), hair: opt.hair || r.pick(HAIR), shirt: opt.shirt || r.pick(CLOTH), pants: opt.pants || shade(r.pick(CLOTH), -0.4), shoes: '#2a2230', hat: opt.hat ?? (r() < 0.25 ? r.pick(CLOTH) : null), coat: opt.coat || false, long: opt.long ?? r() < 0.4 };
+  const pal = { skin: opt.skin || r.pick(SKIN), hair: opt.hair || r.pick(HAIR), shirt: opt.shirt || r.pick(CLOTH), pants: opt.pants || shade(r.pick(CLOTH), -0.4), shoes: opt.shoes || '#2a2230', hat: opt.hat ?? (r() < 0.25 ? r.pick(CLOTH) : null), coat: opt.coat || opt.outfit === 'coat' || false, long: opt.long ?? r() < 0.4 };
+  if (opt.hairStyle) { pal.hairStyle = opt.hairStyle; pal.long = opt.hairStyle === 'long'; }
+  if (opt.outfit) pal.outfit = opt.outfit;
+  return pal;
 }
 // returns a sheet: 3 frames x 4 dirs (down, up, left, right) of 16x20 — shaded, with faces, collars, belts and hair shine
 export function personSheet(pal) {
@@ -199,6 +202,23 @@ export function personSheet(pal) {
         const sw = step; R(7 + sw, 11, 2, 3, shade(shirtC, -0.18), 'arm'); P(7 + sw, 14, skin, 'skin'); P(8 + sw, 14, shade(skin, -0.1), 'skin');
         if (pal.coat) { R(6, 15, 4, 1, '#f2f2f6', 'coat'); R(6, 14, 1, 2, '#f2f2f6', 'coat'); }
       }
+      // ---- outfit variations
+      const outfit = pal.outfit || 'tee';
+      if (outfit === 'jacket') {
+        const inner = '#ecebf2';
+        if (dir === 'down') { R(7, 10, 2, 5, inner, 'inner'); P(7, 10, skin, 'skin'); P(8, 10, skin, 'skin'); P(6, 10, shade(shirtC, 0.3), 'collar'); P(9, 10, shade(shirtC, 0.3), 'collar'); P(6, 12, shade(shirtC, -0.3), 'shirt'); P(9, 12, shade(shirtC, -0.3), 'shirt'); }
+        if (side) { P(9, 11, inner, 'inner'); P(9, 12, inner, 'inner'); P(9, 13, inner, 'inner'); }
+        if (dir === 'up') R(5, 14, 6, 1, shade(shirtC, -0.25), 'shirt');
+      }
+      if (outfit === 'hoodie') {
+        if (dir === 'down') { R(5, 10, 6, 1, shade(shirtC, -0.25), 'hood'); P(7, 11, '#f4f4f8', 'inner'); P(8, 11, '#f4f4f8', 'inner'); P(7, 12, '#f4f4f8', 'inner'); P(8, 12, '#f4f4f8', 'inner'); R(6, 13, 4, 1, shade(shirtC, -0.18), 'shirt'); }
+        if (dir === 'up') { R(5, 9, 6, 3, shade(shirtC, -0.12), 'hood'); R(6, 12, 4, 1, shade(shirtC, -0.3), 'hood'); }
+        if (side) { R(5, 9, 2, 3, shade(shirtC, -0.15), 'hood'); }
+      }
+      if (outfit === 'dress') {
+        if (!side) { R(4, 14, 8, 2, shirtC, 'shirt'); R(3, 15, 10, 1, shade(shirtC, -0.15), 'shirt'); if (dir === 'down') { P(7, 12, shade(shirtC, 0.3), 'collar'); P(8, 12, shade(shirtC, 0.3), 'collar'); } }
+        else { R(5, 14, 6, 2, shirtC, 'shirt'); }
+      }
       // ---- head
       if (!side) {
         R(4, 3, 8, 6, skin, 'skin'); R(5, 9, 6, 1, skin, 'skin'); P(7, 10, shade(skin, -0.15), 'skin'); P(8, 10, shade(skin, -0.15), 'skin');
@@ -216,6 +236,18 @@ export function personSheet(pal) {
         R(5, 1, 7, 3, hair, 'hair'); R(6, 0, 5, 1, hair, 'hair'); R(5, 4, 2, pal.long ? 6 : 4, hair, 'hair'); R(4, 3, 1, pal.long ? 7 : 4, hair, 'hair'); P(11, 4, hair, 'hair'); P(10, 4, hair, 'hair');
         P(10, 5, shade(hair, -0.2), 'brow'); P(10, 6, '#3a4a8a', 'eye'); P(10, 7, eye, 'eye'); P(12, 8, skin, 'skin'); P(11, 8, mouth, 'skin'); P(9, 8, blush, 'skin');
       }
+      const hs = pal.hairStyle || (pal.long ? 'long' : 'short');
+      if (hs === 'spiky') {
+        for (let x = 4; x <= 11; x += 2) { P(x, 0, hair, 'hair'); } P(5, 0, null, null); P(7, 0, null, null); P(9, 0, null, null);
+        if (dir !== 'up') { P(3, 2, hair, 'hair'); P(12, 2, hair, 'hair'); P(7, 4, hair, 'hair'); } else { P(3, 1, hair, 'hair'); P(12, 1, hair, 'hair'); }
+      }
+      if (hs === 'ponytail') {
+        if (dir === 'down') { P(12, 4, shade(hair, -0.1), 'hair'); P(13, 5, hair, 'hair'); P(13, 6, hair, 'hair'); P(13, 7, shade(hair, -0.15), 'hair'); }
+        if (dir === 'up') { P(7, 0, '#e04a6a', 'tie'); P(8, 0, '#e04a6a', 'tie'); R(7, 9, 2, 3, hair, 'hair'); P(7, 12, shade(hair, -0.2), 'hair'); }
+        if (side) { P(4, 2, '#e04a6a', 'tie'); R(2, 3, 2, 5, hair, 'hair'); P(3, 8, shade(hair, -0.2), 'hair'); }
+      }
+      if (hs === 'curly') { for (let y = 0; y < 5; y++) for (let x = 3; x <= 12; x++) if (Mt[y][x] === 'hair' && (x + y * 2) % 3 === 0) C[y][x] = shade(hair, -0.22); if (dir === 'down') { P(3, 3, hair, 'hair'); P(12, 3, hair, 'hair'); P(3, 5, hair, 'hair'); P(12, 5, hair, 'hair'); } }
+      if (hs === 'buzz') { for (let y = 0; y < 10; y++) for (let x = 0; x < W; x++) if (Mt[y][x] === 'hair') { if (y >= 2 || dir === 'up') { C[y][x] = mix(hair, skin, 0.55); } } if (dir === 'down') for (const x of [3, 12]) for (let y = 3; y < 11; y++) if (Mt[y][x] === 'hair') { C[y][x] = null; Mt[y][x] = null; } }
       if (pal.hat) {
         const hc = pal.hat; R(4, 0, 8, 2, hc, 'hat'); R(5, -1, 6, 1, hc, 'hat'); R(4, 2, 8, 1, shade(hc, -0.25), 'hatband');
         if (dir === 'down') R(3, 3, 10, 1, shade(hc, -0.35), 'brim'); if (side) R(9, 3, 5, 1, shade(hc, -0.35), 'brim');
