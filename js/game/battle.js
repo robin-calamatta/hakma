@@ -1,5 +1,6 @@
 // Battles: every attack is a question. Correct = hit, fast = Quick Recall crit, wrong = miss + explanation.
 import { G, ITEMS, xpToNext, makeMon, stats, maxHp, movesOf, monName, gainXp, checkEvolve, evolve, addMon, recordAnswer, badgeCount } from './state.js';
+import { view } from '../core/view.js';
 import { ui, fmt } from './ui.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
@@ -7,32 +8,32 @@ import { monsterCanvas, BIOMES, personSheet, personPalette } from '../core/sprit
 import { TYPES, effectiveness } from '../content/types.js';
 import { R, sleep, clamp, esc, shade, hash, rng } from '../core/rng.js';
 
-const VW = 384, VH = 216;
+
 const tween = (ms, fn) => new Promise((res) => { const t0 = performance.now(); const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); fn(k); if (k < 1) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); });
 const ease = (k) => 1 - Math.pow(1 - k, 3);
 
 function makeBg(biome, kind) {
-  const c = document.createElement('canvas'); c.width = VW; c.height = VH; const g = c.getContext('2d');
+  const c = document.createElement('canvas'); c.width = view.w; c.height = view.h; const g = c.getContext('2d');
   const B = BIOMES[biome] || BIOMES.meadow; const r = rng(hash(biome + kind));
   const arena = kind === 'leader' || kind === 'elite' || kind === 'champion';
   const sky = arena ? (kind === 'leader' ? ['#1a1f3a', '#3a3f6a'] : ['#1a0f30', '#5a2a8a']) : B.sky;
-  const gr = g.createLinearGradient(0, 0, 0, 130); gr.addColorStop(0, sky[0]); gr.addColorStop(1, sky[1]); g.fillStyle = gr; g.fillRect(0, 0, VW, VH);
+  const gr = g.createLinearGradient(0, 0, 0, 130); gr.addColorStop(0, sky[0]); gr.addColorStop(1, sky[1]); g.fillStyle = gr; g.fillRect(0, 0, view.w, view.h);
   if (arena) {
     for (let i = 0; i < 6; i++) { g.fillStyle = `rgba(255,255,255,${0.04 + i * 0.01})`; g.beginPath(); g.moveTo(40 + i * 60, 0); g.lineTo(10 + i * 60, 130); g.lineTo(70 + i * 60, 130); g.fill(); }
-    g.fillStyle = shade(sky[1], -0.3); g.fillRect(0, 118, VW, 98); g.fillStyle = shade(sky[1], 0.1); for (let x = 0; x < VW; x += 24) g.fillRect(x, 118, 12, 2);
+    g.fillStyle = shade(sky[1], -0.3); g.fillRect(0, 118, view.w, 98); g.fillStyle = shade(sky[1], 0.1); for (let x = 0; x < view.w; x += 24) g.fillRect(x, 118, 12, 2);
   } else {
     g.fillStyle = shade(B.hill, -0.1);
-    for (let x = 0; x < VW; x += 2) { const y = 92 + Math.sin(x * 0.02 + r() * 0.05) * 10 + Math.sin(x * 0.05) * 5; g.fillRect(x, y, 2, 40); }
+    for (let x = 0; x < view.w; x += 2) { const y = 92 + Math.sin(x * 0.02 + r() * 0.05) * 10 + Math.sin(x * 0.05) * 5; g.fillRect(x, y, 2, 40); }
     if (B.style === 'tower') { for (let i = 0; i < 14; i++) { const x = i * 28 + r.int(0, 10), h = r.int(30, 80); g.fillStyle = '#20264a'; g.fillRect(x, 118 - h, 20, h); for (let j = 0; j < h; j += 6) { g.fillStyle = r() < 0.5 ? '#4cf0ff' : '#ff4fd8'; g.fillRect(x + 3 + r.int(0, 12), 120 - h + j, 2, 2); } } }
-    if (B.style === 'crystal') for (let i = 0; i < 10; i++) { const x = r.int(0, VW), h = r.int(20, 60); g.fillStyle = '#6a8ae0'; g.beginPath(); g.moveTo(x, 120); g.lineTo(x + 8, 120 - h); g.lineTo(x + 16, 120); g.fill(); }
-    if (B.style === 'snowpine' || B.style === 'pine') for (let i = 0; i < 18; i++) { const x = r.int(0, VW); g.fillStyle = shade(B.tree, -0.2); g.beginPath(); g.moveTo(x, 120); g.lineTo(x + 8, 92 - r.int(0, 10)); g.lineTo(x + 16, 120); g.fill(); }
-    g.fillStyle = B.g; g.fillRect(0, 118, VW, 98); g.fillStyle = B.g2; for (let i = 0; i < 160; i++) g.fillRect(r.int(0, VW), r.int(120, VH), 2, 1);
-    if (biome === 'coast') { g.fillStyle = B.water; g.fillRect(0, 108, VW, 10); g.fillStyle = B.water2; for (let x = 0; x < VW; x += 16) g.fillRect(x, 110, 8, 1); }
-    if (biome === 'neon') { g.strokeStyle = '#4cf0ff44'; for (let y = 120; y < VH; y += 10) { g.beginPath(); g.moveTo(0, y); g.lineTo(VW, y); g.stroke(); } for (let x = -400; x < VW + 400; x += 30) { g.beginPath(); g.moveTo(VW / 2 + (x - VW / 2) * 0.2, 118); g.lineTo(x, VH); g.stroke(); } }
+    if (B.style === 'crystal') for (let i = 0; i < 10; i++) { const x = r.int(0, view.w), h = r.int(20, 60); g.fillStyle = '#6a8ae0'; g.beginPath(); g.moveTo(x, 120); g.lineTo(x + 8, 120 - h); g.lineTo(x + 16, 120); g.fill(); }
+    if (B.style === 'snowpine' || B.style === 'pine') for (let i = 0; i < 18; i++) { const x = r.int(0, view.w); g.fillStyle = shade(B.tree, -0.2); g.beginPath(); g.moveTo(x, 120); g.lineTo(x + 8, 92 - r.int(0, 10)); g.lineTo(x + 16, 120); g.fill(); }
+    g.fillStyle = B.g; g.fillRect(0, 118, view.w, 98); g.fillStyle = B.g2; for (let i = 0; i < 160; i++) g.fillRect(r.int(0, view.w), r.int(120, view.h), 2, 1);
+    if (biome === 'coast') { g.fillStyle = B.water; g.fillRect(0, 108, view.w, 10); g.fillStyle = B.water2; for (let x = 0; x < view.w; x += 16) g.fillRect(x, 110, 8, 1); }
+    if (biome === 'neon') { g.strokeStyle = '#4cf0ff44'; for (let y = 120; y < view.h; y += 10) { g.beginPath(); g.moveTo(0, y); g.lineTo(view.w, y); g.stroke(); } for (let x = -400; x < view.w + 400; x += 30) { g.beginPath(); g.moveTo(view.w / 2 + (x - view.w / 2) * 0.2, 118); g.lineTo(x, view.h); g.stroke(); } }
   }
   const plat = (cx, cy, rx, ry, col) => { g.fillStyle = shade(col, -0.3); g.beginPath(); g.ellipse(cx, cy + 3, rx, ry, 0, 0, 7); g.fill(); g.fillStyle = col; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, 7); g.fill(); g.fillStyle = shade(col, 0.2); g.beginPath(); g.ellipse(cx - 8, cy - 2, rx * 0.6, ry * 0.45, 0, 0, 7); g.fill(); };
   const pc = arena ? '#5a5f8a' : shade(B.path, -0.05);
-  plat(292, 92, 66, 12, pc); plat(118, 158, 104, 16, pc);
+  plat(view.w - 92, 92, 66, 12, pc); plat(118, Math.round(view.h * 0.75) - 4, 104, 16, pc);
   return c;
 }
 
@@ -43,7 +44,7 @@ class BattleScene {
     this.sprites = {}; this.trainerX = null; this.msgWait = null;
   }
   spr(key) { return this.sprites[key] || (this.sprites[key] = { x: 0, y: 0, a: 1, s: 1, flash: 0, glow: 0 }); }
-  allyPos(k, n) { const xs = [[110], [72, 170], [56, 122, 188], [46, 104, 162, 220]][n - 1]; const sc = [2, 1.7, 1.5, 1.35][n - 1]; return { x: xs[k] + 8, y: 162, s: sc }; }
+  allyPos(k, n) { const xs = [[110], [72, 170], [56, 122, 188], [46, 104, 162, 220]][n - 1]; const sc = [2, 1.7, 1.5, 1.35][n - 1]; return { x: xs[k] + 8 - (view.w < 384 ? 20 : 0), y: Math.round(view.h * 0.75), s: sc }; }
   update(dt) {
     this.t += dt;
     for (const p of this.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; p.life -= dt; }
@@ -52,14 +53,15 @@ class BattleScene {
     if (this.msgWait && (input.anyPressed('a') >= 0 || input.anyPressed('b') >= 0)) { const w = this.msgWait; this.msgWait = null; w(); }
     const B = BIOMES[this.o.biome || G.world?.map?.biome]; // ambient particles
     if (B && R() < 0.25 && !['leader', 'elite', 'champion'].includes(this.o.kind)) {
-      if (B.style === 'snowpine') this.parts.push({ x: R() * VW, y: -4, vx: R() * 10 - 5, vy: 20 + R() * 15, life: 10, c: '#ffffff', s: 2 });
-      if (B.style === 'dead') this.parts.push({ x: R() * VW, y: VH, vx: R() * 10 - 5, vy: -20 - R() * 20, life: 6, c: R() < 0.5 ? '#ff7a2a' : '#ffd23f', s: 1 });
-      if (B.style === 'tower') this.parts.push({ x: R() * VW, y: R() * 110, vx: 0, vy: -8, life: 1.2, c: R() < 0.5 ? '#4cf0ff' : '#ff4fd8', s: 1 });
+      if (B.style === 'snowpine') this.parts.push({ x: R() * view.w, y: -4, vx: R() * 10 - 5, vy: 20 + R() * 15, life: 10, c: '#ffffff', s: 2 });
+      if (B.style === 'dead') this.parts.push({ x: R() * view.w, y: view.h, vx: R() * 10 - 5, vy: -20 - R() * 20, life: 6, c: R() < 0.5 ? '#ff7a2a' : '#ffd23f', s: 1 });
+      if (B.style === 'tower') this.parts.push({ x: R() * view.w, y: R() * 110, vx: 0, vy: -8, life: 1.2, c: R() < 0.5 ? '#4cf0ff' : '#ff4fd8', s: 1 });
     }
   }
   render(g) {
     g.save();
     if (this.shake > 0) g.translate((R() - 0.5) * this.shake, (R() - 0.5) * this.shake);
+    if (this.bg.width !== view.w || this.bg.height !== view.h) this.bg = makeBg(this.o.biome || G.world?.map?.biome || 'meadow', this.o.kind);
     g.drawImage(this.bg, 0, 0);
     const bob = (ph) => Math.round(Math.sin(this.t * 2.4 + ph) * 1.5);
     const drawMon = (sp, back, x, y, s, st, ph) => {
@@ -72,14 +74,14 @@ class BattleScene {
       g.globalAlpha = 1;
     };
     if (this.trainerX !== null && this.o.trainerPal) { const sh = personSheet(this.o.trainerPal); g.drawImage(sh, 0, 0, 16, 20, this.trainerX - 24, 30, 48, 60); }
-    if (this.enemy && this.enemyVisible) drawMon(G.W.species[this.enemy.mon.sp], false, 292, 96, 1.6, this.spr('e'), 0);
+    if (this.enemy && this.enemyVisible) drawMon(G.W.species[this.enemy.mon.sp], false, view.w - 92, 96 + (view.h > 216 ? 14 : 0), 1.6, this.spr('e'), 0);
     const n = this.allies.length;
     this.allies.forEach((al, k) => { if (!al.visible) return; const p = this.allyPos(k, n); drawMon(G.W.species[al.mon.sp], true, p.x, p.y, p.s, this.spr('a' + k), k + 1); });
     if (this.cube) { const c = this.cube; g.fillStyle = '#14101c'; g.fillRect(c.x - 5, c.y - 5, 10, 10); g.fillStyle = c.col; g.fillRect(c.x - 4, c.y - 4, 8, 8); g.fillStyle = '#fff'; g.fillRect(c.x - 4, c.y - 4, 3, 2); }
     for (const p of this.parts) { g.globalAlpha = Math.min(1, p.life * 3); g.fillStyle = p.c; g.fillRect(Math.round(p.x), Math.round(p.y), p.s || 2, p.s || 2); }
     g.globalAlpha = 1;
-    if (this.flashT > 0) { g.fillStyle = `rgba(255,255,255,${this.flashT})`; g.fillRect(0, 0, VW, VH); this.flashT = Math.max(0, this.flashT - 0.08); }
-    if (this.wipe !== undefined) { g.fillStyle = '#000'; for (let i = 0; i < 12; i++) { const w = VW * this.wipe; g.fillRect(i % 2 ? VW - w : 0, i * 18, w, 18); } }
+    if (this.flashT > 0) { g.fillStyle = `rgba(255,255,255,${this.flashT})`; g.fillRect(0, 0, view.w, view.h); this.flashT = Math.max(0, this.flashT - 0.08); }
+    if (this.wipe !== undefined) { g.fillStyle = '#000'; for (let i = 0; i < 12; i++) { const w = view.w * this.wipe; g.fillRect(i % 2 ? view.w - w : 0, i * 18, w, 18); } }
     g.restore();
   }
   // ---------------------------------------------------- HUD
@@ -98,7 +100,7 @@ class BattleScene {
   msg(text, ms) { this.text = text; this.hud(); const t = ms ?? clamp(500 + text.length * 28, 900, 2600); return new Promise((res) => { const to = setTimeout(() => { this.msgWait = null; res(); }, t); this.msgWait = () => { clearTimeout(to); res(); }; }); }
   async hpTo(m, enemy, to) { const from = m.hp; await tween(380, (k) => { m.hp = from + (to - from) * ease(k); this.hud(); }); m.hp = to; this.hud(); }
   burst(x, y, col, n = 18, sp = 90) { for (let i = 0; i < n; i++) { const a = R() * 6.28, v = sp * (0.3 + R()); this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 60, life: 0.4 + R() * 0.4, c: R() < 0.3 ? '#fff' : col, s: R() < 0.5 ? 2 : 3 }); } }
-  posOf(side) { if (side === 'e') return { x: 292, y: 60 }; const k = +side.slice(1); const p = this.allyPos(k, this.allies.length); return { x: p.x, y: p.y - 50 }; }
+  posOf(side) { if (side === 'e') return { x: view.w - 92, y: 60 + (view.h > 216 ? 14 : 0) }; const k = +side.slice(1); const p = this.allyPos(k, this.allies.length); return { x: p.x, y: p.y - 50 }; }
   async animAttack(src, dst, type) {
     const s = this.spr(src), S = this.posOf(src), D = this.posOf(dst); const col = TYPES[type]?.color || '#fff';
     const dx = Math.sign(D.x - S.x) * 16, dy = Math.sign(D.y - S.y) * 8;
@@ -130,9 +132,9 @@ class BattleScene {
     spawnEnemy(0);
     if (o.kind === 'wild') { this.enemyVisible = true; this.spr('e').x = 160; this.hud(); await tween(400, (k) => { this.spr('e').x = 160 * (1 - ease(k)); }); await this.msg(`A wild ${W.species[this.enemy.mon.sp].name} appeared!`); }
     else {
-      this.trainerX = 420; await tween(400, (k) => { this.trainerX = 420 - 128 * ease(k); });
+      this.trainerX = view.w + 36; await tween(400, (k) => { this.trainerX = view.w + 36 - 128 * ease(k); });
       await this.msg(o.introMsg || `${o.trainerTitle} wants to battle!`);
-      await tween(300, (k) => { this.trainerX = 292 + 140 * k; }); this.trainerX = null;
+      await tween(300, (k) => { this.trainerX = view.w - 92 + 140 * k; }); this.trainerX = null;
       this.enemyVisible = true; this.spr('e').a = 0; this.hud(); await this.animEnter('e'); await this.msg(`${o.trainerTitle} sent out ${W.species[this.enemy.mon.sp].name}!`, 1100);
     }
     for (let k = 0; k < this.allies.length; k++) { this.allies[k].visible = true; this.hud(); await this.animEnter('a' + k); }
@@ -277,7 +279,7 @@ class BattleScene {
     let p = (1 - 0.72 * hpF) * ITEMS[cubeId].rate * (res.correct ? (res.quick ? 2.1 : 1.7) : 0.55) * [0.9, 0.62, 0.4][sp.stage] * 0.55;
     if (this.o.kind !== 'wild') p = 0; p = clamp(p, 0.04, 0.97);
     // throw animation
-    const from = this.posOf('a' + k), to = { x: 292, y: 60 }; audio.sfx('throw');
+    const from = this.posOf('a' + k), to = this.posOf('e'); audio.sfx('throw');
     this.cube = { x: from.x, y: from.y, col: cubeId === 'cube' ? '#4cf0ff' : cubeId === 'cube2' ? '#ff4fd8' : '#ffd23f' };
     await tween(450, (t) => { this.cube.x = from.x + (to.x - from.x) * t; this.cube.y = from.y + (to.y - from.y) * t - Math.sin(t * Math.PI) * 60; });
     this.burst(to.x, to.y, '#ffffff', 20, 80); const s = this.spr('e'); await tween(220, (t) => { s.s = 1 - t; s.a = 1 - t; });
@@ -330,11 +332,11 @@ export async function evolveScene(scene, m, to) {
   const say = (t) => { el.querySelector('.btext').innerHTML = esc(t); };
   const prevScene = G.scene; const cv = { t: 0, form: 0, white: 0 };
   G.scene = { update: (dt) => { cv.t += dt; }, render: (g) => {
-    g.fillStyle = '#0d0820'; g.fillRect(0, 0, VW, VH);
-    for (let i = 0; i < 40; i++) { const a = i * 0.7 + cv.t * 0.6, rr = 40 + (i * 13) % 120; g.fillStyle = i % 2 ? TYPES[dest.type].color : '#ffffff'; g.fillRect(VW / 2 + Math.cos(a) * rr, VH / 2 + Math.sin(a) * rr * 0.6, 2, 2); }
+    g.fillStyle = '#0d0820'; g.fillRect(0, 0, view.w, view.h);
+    for (let i = 0; i < 40; i++) { const a = i * 0.7 + cv.t * 0.6, rr = 40 + (i * 13) % 120; g.fillStyle = i % 2 ? TYPES[dest.type].color : '#ffffff'; g.fillRect(view.w / 2 + Math.cos(a) * rr, view.h / 2 + Math.sin(a) * rr * 0.6, 2, 2); }
     const sp = cv.form ? dest : from; const c = monsterCanvas(sp, false); const s = 2.2;
-    g.drawImage(c, VW / 2 - 28 * s, VH / 2 + 50 - 56 * s, 56 * s, 56 * s);
-    if (cv.white > 0) { g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(255,255,255,${cv.white})`; g.fillRect(0, 0, VW, VH); g.globalCompositeOperation = 'source-over'; }
+    g.drawImage(c, view.w / 2 - 28 * s, view.h / 2 + 50 - 56 * s, 56 * s, 56 * s);
+    if (cv.white > 0) { g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(255,255,255,${cv.white})`; g.fillRect(0, 0, view.w, view.h); g.globalCompositeOperation = 'source-over'; }
   } };
   audio.play('evolve' + to, to, 'mystic');
   say(`What? ${monName(W, m)} is evolving!`); await sleep(1400);

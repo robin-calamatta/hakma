@@ -10,6 +10,7 @@ import { monRow, evolveScene } from './battle.js';
 import { checkEvolve, evolve } from './state.js';
 import { itemIcon } from '../core/sprites.js';
 import { CONFIG } from '../config.js';
+import { editControls } from '../core/touchlayout.js';
 
 const S = () => G.save, W = () => G.W;
 
@@ -176,8 +177,8 @@ export async function settings() {
   };
   let cur = 0;
   await ui.panel({ title: 'Settings', onLR: (d, rr) => { const l = ui.stack[ui.stack.length - 1]; cur = l.idx; if (keys[cur]) change(keys[cur], d); rr(); },
-    render: () => `<div class="slist">${keys.map((k, i) => `<button data-nav data-act="t" data-arg="${k}" class="srow"><span>${lbl[k]}</span><b>◀ ${val(k)} ▶</b></button>`).join('')}</div><p class="dim">Left/right to change. Turn the timer off for a relaxed, accessible pace — you can still earn Quick Recall bonuses.</p>`,
-    actions: { t: (k) => change(k, 1) } });
+    render: () => `<div class="slist">${keys.map((k, i) => `<button data-nav data-act="t" data-arg="${k}" class="srow"><span>${lbl[k]}</span><b>◀ ${val(k)} ▶</b></button>`).join('')}${document.body.classList.contains('touch') ? '<button data-nav data-act="ctl" class="srow"><span>Touch controls</span><b>Move &amp; resize ▶</b></button>' : ''}</div><p class="dim">Left/right to change. Turn the timer off for a relaxed, accessible pace — you can still earn Quick Recall bonuses.</p>`,
+    actions: { t: (k) => change(k, 1), ctl: async () => { setTimeout(async () => { G.busy++; await editControls(); G.busy--; }, 50); return 'close'; } } });
 }
 export async function help() {
   await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p>

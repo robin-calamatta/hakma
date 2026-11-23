@@ -1,5 +1,6 @@
 // Overworld: tile movement for up to 4 local players, NPCs, warps, encounters, trainer sight, online peers.
 import { G, PLAYER_COLORS } from './state.js';
+import { view } from '../core/view.js';
 import { getMap } from './maps.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
@@ -8,7 +9,7 @@ import { TYPES } from '../content/types.js';
 import { hash, R, clamp } from '../core/rng.js';
 import { ui } from './ui.js';
 
-const VW = 384, VH = 216, TS = 16;
+const TS = 16;
 const DX = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const PEOPLE = new Set(['npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
 
@@ -57,9 +58,9 @@ export class World {
   snapCam() { const t = this.camTarget(); this.cam.x = t.x; this.cam.y = t.y; }
   camTarget() {
     const m = this.map; let cx = 0, cy = 0; for (const p of this.lp) { cx += p.px; cy += p.py; } cx /= this.lp.length; cy /= this.lp.length;
-    let x = cx + 8 - VW / 2, y = cy + 8 - VH / 2;
+    let x = cx + 8 - view.w / 2, y = cy + 8 - view.h / 2;
     const mw = m.w * TS, mh = m.h * TS;
-    x = mw <= VW ? (mw - VW) / 2 : clamp(x, 0, mw - VW); y = mh <= VH ? (mh - VH) / 2 : clamp(y, 0, mh - VH);
+    x = mw <= view.w ? (mw - view.w) / 2 : clamp(x, 0, mw - view.w); y = mh <= view.h ? (mh - view.h) / 2 : clamp(y, 0, mh - view.h);
     return { x, y };
   }
   canControl() { return !G.busy && !ui.open && G.scene === this; }
@@ -107,7 +108,7 @@ export class World {
     // keep local co-op players on one screen
     if (this.lp.length > 1) {
       const xs = this.lp.map((q) => (q === p ? nx : q.x)), ys = this.lp.map((q) => (q === p ? ny : q.y));
-      if (Math.max(...xs) - Math.min(...xs) > VW / TS - 3 || Math.max(...ys) - Math.min(...ys) > VH / TS - 3) { if (this.bumpT <= 0) { audio.sfx('bump'); this.bumpT = 0.4; } return; }
+      if (Math.max(...xs) - Math.min(...xs) > view.w / TS - 3 || Math.max(...ys) - Math.min(...ys) > view.h / TS - 3) { if (this.bumpT <= 0) { audio.sfx('bump'); this.bumpT = 0.4; } return; }
     }
     if (warp && warp.door && G.events.doorBlocked(warp)) return;
     p.fx = p.x; p.fy = p.y; p.x = nx; p.y = ny; p.mt = 0; p.moving = true; p.stepT = run ? 0.1 : 0.18;
@@ -147,9 +148,9 @@ export class World {
     const m = this.map; if (!m) return; const B = BIOMES[m.biome] ? m.biome : 'meadow';
     const frame = Math.floor(this.t * 2) % 2; const atlas = tileAtlas(m.kind === 'interior' ? 'interior' : B, frame);
     const cx = Math.round(this.cam.x), cy = Math.round(this.cam.y);
-    g.fillStyle = m.kind === 'interior' ? '#0d0a14' : BIOMES[B].tree2; g.fillRect(0, 0, VW, VH);
+    g.fillStyle = m.kind === 'interior' ? '#0d0a14' : BIOMES[B].tree2; g.fillRect(0, 0, view.w, view.h);
     const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
-    for (let y = y0; y <= y0 + Math.ceil(VH / TS); y++) for (let x = x0; x <= x0 + Math.ceil(VW / TS); x++) {
+    for (let y = y0; y <= y0 + Math.ceil(view.h / TS); y++) for (let x = x0; x <= x0 + Math.ceil(view.w / TS); x++) {
       if (x < 0 || y < 0 || x >= m.w || y >= m.h) continue; const t = m.t[y * m.w + x];
       if (t === T.BWALL || t === T.DOOR) { g.drawImage(atlas, T.GRASS * TS, 0, TS, TS, x * TS - cx, y * TS - cy, TS, TS); continue; }
       g.drawImage(atlas, t * TS, 0, TS, TS, x * TS - cx, y * TS - cy, TS, TS);
@@ -162,9 +163,9 @@ export class World {
     for (const p of this.lp) ents.push({ y: p.py + 0.1, draw: () => this.drawPerson(g, p.sheet, p.px - cx, p.py - cy, p.dir, p.moving ? (Math.floor(p.mt * 2) % 2) + 1 : 0, this.lp.length > 1 ? 'P' + (p.i + 1) : null, G.save.players[p.i].color, p) });
     for (const pr of G.net?.peersHere?.() || []) { const d = this.peerDraw[pr.id]; if (!d) continue; const sheet = pr.sheet || (pr.sheet = personSheet(personPalette(hash(pr.name), { shirt: pr.color || '#888' }))); const mv = Math.abs(d.x - pr.x * TS) + Math.abs(d.y - pr.y * TS) > 1; ents.push({ y: d.y, draw: () => { this.drawPerson(g, sheet, d.x - cx, d.y - cy, pr.dir || 'down', mv ? (Math.floor(this.t * 6) % 2) + 1 : 0, pr.name, pr.color || '#888', { x: Math.round(d.x / TS), y: Math.round(d.y / TS) }); if (pr.bubble && pr.bubbleUntil > Date.now()) this.bubble(g, d.x - cx + 8, d.y - cy - 14, pr.bubble); } }); }
     ents.sort((a, b) => a.y - b.y).forEach((e) => e.draw());
-    if (m.kind !== 'interior' && (B === 'snow')) { g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 40; i++) { const x = (i * 97 + this.t * 20 * (1 + (i % 3))) % VW, y = (i * 53 + this.t * 30 * (1 + (i % 2))) % VH; g.fillRect(x, y, 1, 1); } }
-    if (m.kind !== 'interior' && B === 'neon') { g.fillStyle = 'rgba(40,0,80,0.12)'; g.fillRect(0, 0, VW, VH); }
-    if (m.kind !== 'interior' && B === 'volcano') { g.fillStyle = 'rgba(255,80,20,0.08)'; g.fillRect(0, 0, VW, VH); }
+    if (m.kind !== 'interior' && (B === 'snow')) { g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 40; i++) { const x = (i * 97 + this.t * 20 * (1 + (i % 3))) % view.w, y = (i * 53 + this.t * 30 * (1 + (i % 2))) % view.h; g.fillRect(x, y, 1, 1); } }
+    if (m.kind !== 'interior' && B === 'neon') { g.fillStyle = 'rgba(40,0,80,0.12)'; g.fillRect(0, 0, view.w, view.h); }
+    if (m.kind !== 'interior' && B === 'volcano') { g.fillStyle = 'rgba(255,80,20,0.08)'; g.fillRect(0, 0, view.w, view.h); }
   }
   drawPerson(g, sheet, x, y, dir, f, tag, col, p) {
     x = Math.round(x); y = Math.round(y);

@@ -111,7 +111,8 @@ export const ui = {
       const limit = G.settings.timer ? (opt.time || G.settings.timerSec || 25) : 0;
       const quickT = opt.quick ?? 6;
       const keys = ['1', '2', '3', '4'];
-      const html = `<div class="quiz ${opt.cls || ''}">
+      const long = q.opts.some((o) => String(o).length > 48) || q.q.length > 120;
+      const html = `<div class="quiz ${opt.cls || ''} ${long ? 'long' : ''}">
         <div class="qhead"><span class="qtag">${esc(opt.tag || 'Question')}${q.review ? ' · <b>Review</b>' : ''}</span>${opt.who ? `<span class="qwho">${esc(opt.who)}</span>` : ''}</div>
         <div class="qtext">${fmt(esc(q.q))}</div>
         <div class="qopts">${q.opts.map((o, i) => `<button data-nav data-i="${i}"><span class="k">${keys[i] || ''}</span>${esc(o)}</button>`).join('')}</div>
@@ -133,7 +134,7 @@ export const ui = {
         result = { correct, quick, time, choice: i };
         l.el.querySelectorAll('[data-i]').forEach((b) => { const k = +b.dataset.i; b.disabled = true; if (k === q.answer) b.classList.add('right'); else if (k === i) b.classList.add('wrongpick'); });
         audio.sfx(correct ? (quick ? 'quick' : 'correct') : 'wrong');
-        const fb = l.el.querySelector('.qfeedback'); fb.classList.remove('hidden');
+        l.el.querySelector('.quiz').classList.add('answered'); const fb = l.el.querySelector('.qfeedback'); fb.classList.remove('hidden');
         fb.innerHTML = correct ? `<b class="ok">${quick ? '⚡ Quick Recall!' : '✔ Correct!'}</b> <span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>` : `<b class="bad">${i < 0 ? '⏱ Time\'s up!' : '✘ Not quite.'}</b> Answer: <b>${esc(q.a)}</b><br><span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>`;
         fb.addEventListener('click', finish);
         if (opt.autoClose) setTimeout(finish, correct ? 900 : 2600);

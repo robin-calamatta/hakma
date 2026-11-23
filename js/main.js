@@ -1,5 +1,7 @@
 // Boot, title screen, game loop.
 import { CONFIG } from './config.js';
+import { view } from './core/view.js';
+import { applyLayout, editingControls } from './core/touchlayout.js';
 import { G, loadSettings, newSave, listSlots, readSlot, writeSlot, deleteSlot, migrate, badgeCount } from './game/state.js';
 import { input } from './core/input.js';
 import { audio } from './core/audio.js';
@@ -12,7 +14,7 @@ import { monsterCanvas, itemIcon } from './core/sprites.js';
 import { esc, R, hash } from './core/rng.js';
 import * as menus from './game/menus.js';
 
-const VW = 384, VH = 216;
+
 const cv = document.getElementById('screen'); const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
 G.version = CONFIG.VERSION; G.settings = loadSettings(); G.topicsCount = topics().length;
 audio.setVolume('music', G.settings.music); audio.setVolume('sfx', G.settings.sfx);
@@ -28,20 +30,26 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) G.aut
 const stage = document.getElementById('stage');
 function resize() {
   const ww = innerWidth, wh = innerHeight; const touch = matchMedia('(pointer: coarse)').matches; document.body.classList.toggle('touch', touch);
-  const avail = touch && wh > ww ? wh * 0.62 : wh;
-  let s = Math.min(ww / VW, avail / VH); if (s >= 2) s = Math.floor(s * 2) / 2;
-  stage.style.width = Math.floor(VW * s) + 'px'; stage.style.height = Math.floor(VH * s) + 'px';
+  const portrait = touch && wh > ww; document.body.classList.toggle('portrait', portrait);
+  // Portrait phones: a taller handheld-style screen that spans the full width; controls sit underneath.
+  let w = 384, h = 216;
+  if (portrait) { w = 320; const controls = Math.min(240, wh * 0.32); h = Math.max(216, Math.min(380, Math.round((w * (wh - controls)) / ww))); }
+  if (view.w !== w || view.h !== h) { view.w = w; view.h = h; cv.width = w; cv.height = h; g.imageSmoothingEnabled = false; if (G.world?.map) G.world.snapCam(); }
+  let s = portrait ? ww / w : Math.min(ww / w, wh / h);
+  if (!touch && s >= 2) s = Math.floor(s * 2) / 2;
+  stage.style.width = Math.floor(w * s) + 'px'; stage.style.height = Math.floor(h * s) + 'px';
   document.documentElement.style.setProperty('--px', s + 'px');
+  requestAnimationFrame(applyLayout);
 }
 addEventListener('resize', resize); resize();
 document.querySelectorAll('#touch [data-b]').forEach((b) => {
-  const k = b.dataset.b; const on = (e) => { e.preventDefault(); audio.init(); input.setTouch(k, true); b.classList.add('down'); }; const offf = (e) => { e.preventDefault(); input.setTouch(k, false); b.classList.remove('down'); };
+  const k = b.dataset.b; const on = (e) => { if (editingControls()) return; e.preventDefault(); audio.init(); input.setTouch(k, true); b.classList.add('down'); }; const offf = (e) => { e.preventDefault(); input.setTouch(k, false); b.classList.remove('down'); };
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', offf); b.addEventListener('pointerleave', offf); b.addEventListener('pointercancel', offf);
 });
 // d-pad: slide between directions
 const pad = document.getElementById('dpad');
 if (pad) { const dirs = ['up', 'down', 'left', 'right']; const setDir = (e) => { const r = pad.getBoundingClientRect(); const x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2; for (const d of dirs) input.setTouch(d, false); if (Math.hypot(x, y) < 8) return; input.setTouch(Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : y > 0 ? 'down' : 'up', true); };
-  pad.addEventListener('pointerdown', (e) => { e.preventDefault(); audio.init(); pad.setPointerCapture(e.pointerId); setDir(e); }); pad.addEventListener('pointermove', (e) => { if (e.buttons) setDir(e); }); const end = () => dirs.forEach((d) => input.setTouch(d, false)); pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end); }
+  pad.addEventListener('pointerdown', (e) => { if (editingControls()) return; e.preventDefault(); audio.init(); pad.setPointerCapture(e.pointerId); setDir(e); }); pad.addEventListener('pointermove', (e) => { if (e.buttons && !editingControls()) setDir(e); }); const end = () => dirs.forEach((d) => input.setTouch(d, false)); pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end); }
 const unlock = () => audio.init(); addEventListener('keydown', unlock); addEventListener('pointerdown', unlock);
 addEventListener('gamepadconnected', (e) => ui.toast(`🎮 Controller ${e.gamepad.index + 1} connected`));
 
@@ -57,19 +65,19 @@ const titleScene = {
   update(dt) {
     this.t += dt;
     if (parade.length < 7 && R() < dt * 0.9) { const tp = R.pick(topics()); const w = getWorld(tp.id); const ids = Object.keys(w.species); const sp = w.species[R.pick(ids)]; parade.push({ sp, x: -60, y: 150 + R.int(0, 50), v: 25 + R() * 25 }); }
-    for (const p of parade) p.x += p.v * dt; while (parade.length && parade[0].x > VW + 60) parade.shift();
+    for (const p of parade) p.x += p.v * dt; while (parade.length && parade[0].x > view.w + 60) parade.shift();
   },
   render(g) {
-    const t = this.t; const gr = g.createLinearGradient(0, 0, 0, VH); gr.addColorStop(0, '#120a2a'); gr.addColorStop(0.6, '#2a1a5a'); gr.addColorStop(1, '#4a2a6a'); g.fillStyle = gr; g.fillRect(0, 0, VW, VH);
-    for (let i = 0; i < 70; i++) { const x = (i * 71 + t * (4 + (i % 5))) % VW, y = (i * 37) % 120; g.fillStyle = i % 7 ? 'rgba(255,255,255,0.6)' : '#4cf0ff'; g.fillRect(x, y, 1, 1); }
-    g.fillStyle = '#1a1040'; for (let x = 0; x < VW; x += 2) { const y = 140 + Math.sin(x * 0.03 + t * 0.2) * 8 + Math.sin(x * 0.011) * 10; g.fillRect(x, y, 2, VH); }
-    g.fillStyle = '#2a1a50'; for (let x = 0; x < VW; x += 2) { const y = 170 + Math.sin(x * 0.05 + 1) * 5; g.fillRect(x, y, 2, VH); }
+    const t = this.t; const gr = g.createLinearGradient(0, 0, 0, view.h); gr.addColorStop(0, '#120a2a'); gr.addColorStop(0.6, '#2a1a5a'); gr.addColorStop(1, '#4a2a6a'); g.fillStyle = gr; g.fillRect(0, 0, view.w, view.h);
+    for (let i = 0; i < 70; i++) { const x = (i * 71 + t * (4 + (i % 5))) % view.w, y = (i * 37) % 120; g.fillStyle = i % 7 ? 'rgba(255,255,255,0.6)' : '#4cf0ff'; g.fillRect(x, y, 1, 1); }
+    g.fillStyle = '#1a1040'; for (let x = 0; x < view.w; x += 2) { const y = 140 + Math.sin(x * 0.03 + t * 0.2) * 8 + Math.sin(x * 0.011) * 10; g.fillRect(x, y, 2, view.h); }
+    g.fillStyle = '#2a1a50'; for (let x = 0; x < view.w; x += 2) { const y = 170 + Math.sin(x * 0.05 + 1) * 5; g.fillRect(x, y, 2, view.h); }
     for (const p of [...parade].sort((a, b) => a.y - b.y)) { const c = monsterCanvas(p.sp); g.drawImage(c, Math.round(p.x), Math.round(p.y - 56 + Math.abs(Math.sin(t * 6 + p.v)) * -3), 56, 56); }
     g.save(); g.textAlign = 'center'; g.font = '32px "Press Start 2P"';
     const y = 62 + Math.sin(t * 1.5) * 2;
-    g.fillStyle = '#000'; g.fillText('HAKMA', VW / 2 + 3, y + 3);
-    const lg = g.createLinearGradient(0, y - 30, 0, y); lg.addColorStop(0, '#ffe14c'); lg.addColorStop(1, '#ff4fd8'); g.fillStyle = lg; g.shadowColor = '#ff4fd8'; g.shadowBlur = 12; g.fillText('HAKMA', VW / 2, y); g.shadowBlur = 0;
-    g.font = '8px "Press Start 2P"'; g.fillStyle = '#9ff3ff'; g.fillText('LEARN ANYTHING. MASTER EVERYTHING.', VW / 2, y + 18);
+    g.fillStyle = '#000'; g.fillText('HAKMA', view.w / 2 + 3, y + 3);
+    const lg = g.createLinearGradient(0, y - 30, 0, y); lg.addColorStop(0, '#ffe14c'); lg.addColorStop(1, '#ff4fd8'); g.fillStyle = lg; g.shadowColor = '#ff4fd8'; g.shadowBlur = 12; g.fillText('HAKMA', view.w / 2, y); g.shadowBlur = 0;
+    g.font = '8px "Press Start 2P"'; g.fillStyle = '#9ff3ff'; g.fillText('LEARN ANYTHING. MASTER EVERYTHING.', view.w / 2, y + 18);
     g.restore();
   },
 };

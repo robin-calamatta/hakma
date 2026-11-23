@@ -54,7 +54,7 @@ export const events = {
     const o = objective(); if (o !== G.lastObjective) { if (G.lastObjective !== undefined) ui.toast('★ ' + o, 3600); G.lastObjective = o; }
   },
   async wild(p) {
-    const m = G.world.map; const [lo, hi] = W().routeLevels(m.encounter); const li = R.pick(W().routeLines(m.encounter)); const lvl = R.int(lo, hi);
+    const m = G.world.map; const rt = m.encounter || Math.min(9, (+G.world.chapter() || 0) + 1); const [lo, hi] = W().routeLevels(rt); const li = R.pick(W().routeLines(rt)); const lvl = R.int(lo, hi);
     G.busy++; audio.sfx('encounter'); await sleep(350);
     const r = await runBattle({ kind: 'wild', enemies: [{ sp: W().speciesFor(li, lvl), lvl }], qci: G.world.chapter(), biome: m.biome, music: 'battle', seed: W().id + m.id });
     G.world.noEnc = 4; G.busy--;

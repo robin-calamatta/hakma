@@ -147,18 +147,35 @@ body.printcert { background: #fff; overflow: auto; --px: 3px; font-family: 'VT32
 .credits .roll { text-align: center; animation: roll 18s linear; } .credits .roll p:first-child { font: calc(var(--px) * 14) 'Press Start 2P'; color: var(--sel); }
 @keyframes roll { from { transform: translateY(60%); } }
 .help p { margin: 0.3em 0; }
-/* touch controls */
-#touch { display: none; }
-body.touch #touch { display: flex; width: 100%; max-width: 640px; justify-content: space-between; align-items: center; padding: 10px 18px calc(10px + env(safe-area-inset-bottom)); }
-#dpad { width: 132px; height: 132px; position: relative; border-radius: 50%; background: radial-gradient(#2a1f5a, #1a1040); border: 2px solid #4a3a8a; touch-action: none; }
-#dpad span { position: absolute; color: #9ff3ff; font-size: 20px; pointer-events: none; } #dpad .u { top: 8px; left: 56px; } #dpad .d { bottom: 8px; left: 56px; } #dpad .l { left: 10px; top: 52px; } #dpad .r { right: 10px; top: 52px; }
-#touch button { font: 12px 'Press Start 2P'; touch-action: none; text-align: center; }
-#touch .ab { display: flex; gap: 14px; align-items: center; } #touch .ab button { width: 64px; height: 64px; border-radius: 50%; font-size: 16px; border: 3px solid #6a5ab0; } #touch .ab .a { background: #6a2a8a; margin-bottom: 28px; } #touch .ab .b { background: #2a4a8a; }
-#touch button.down { filter: brightness(1.6); }
-#touch .mid button { padding: 8px 10px; border-radius: 8px; }
-@media (orientation: landscape) { body.touch #touch { position: fixed; inset: auto 0 0 0; max-width: none; pointer-events: none; opacity: 0.55; } body.touch #touch > * { pointer-events: auto; } body.touch #touch .mid { align-self: flex-end; } }
 #hud.battle .allyhuds.compact { width: 38%; gap: 0.15em; }
 #hud.battle .allyhuds.compact .bhud { padding: 0.1em 0.4em; font-size: 0.85em; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 0.4em; }
 #hud.battle .allyhuds.compact .tt { display: none; }
 #hud.battle .allyhuds.compact .hp { grid-column: 1; height: 0.4em; }
 #hud.battle .allyhuds.compact .hpn { grid-column: 2; grid-row: 1 / 3; }
+/* quiz: never overflow — collapse unpicked answers once answered, shrink long text */
+.quiz { overflow: hidden; }
+.quiz .qopts { min-height: 0; overflow-y: auto; }
+.quiz .qtext { min-height: 0; }
+.quiz.long .qtext { font-size: 1.2em; }
+.quiz.long .qopts button { font-size: 1em; min-height: 2em; padding: 0.25em 0.45em; }
+.quiz.answered .qopts { flex: 0 0 auto; }
+.quiz.answered .qopts button:not(.right):not(.wrongpick) { display: none; }
+.quiz .qfeedback { flex-shrink: 0; max-height: none; }
+/* portrait phones: game on top */
+body.portrait #app { justify-content: flex-start; padding-top: env(safe-area-inset-top); }
+/* touch controls: freely positioned, user-editable (see js/core/touchlayout.js) */
+#touch { display: none; }
+body.touch #touch { display: block; position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+#touch > * { position: absolute; pointer-events: auto; opacity: var(--op, 1); touch-action: none; -webkit-tap-highlight-color: transparent; }
+#dpad { width: 140px; height: 140px; flex-shrink: 0; border-radius: 50%; background: radial-gradient(#2a1f5a, #1a1040); border: 2px solid #4a3a8a; }
+#dpad span { position: absolute; color: #9ff3ff; font-size: 20px; pointer-events: none; transform: translate(-50%, -50%); }
+#dpad .u { left: 50%; top: 16%; } #dpad .d { left: 50%; top: 84%; } #dpad .l { left: 16%; top: 50%; } #dpad .r { left: 84%; top: 50%; }
+#touch button { font: 16px 'Press Start 2P', monospace; text-align: center; color: #fff; border: 3px solid #6a5ab0; }
+#touch button.a, #touch button.b { width: 70px; height: 70px; border-radius: 50%; }
+#touch button.a { background: #6a2a8a; } #touch button.b { background: #2a4a8a; }
+#touch button.menu { font-size: 11px; padding: 9px 12px; border-radius: 10px; background: #2a1f5a; }
+#touch .down { filter: brightness(1.6); }
+body.editctl #touch > * { outline: 2px dashed #9ff3ff; outline-offset: 4px; opacity: 1 !important; }
+body.editctl #touch > .ctlsel { outline: 3px solid #ffe14c; box-shadow: 0 0 18px #ffe14c; }
+#ctlbar { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 30; width: min(94vw, 560px); background: #1c1440; border: 2px solid #fff; padding: 8px 10px; font: 14px system-ui, sans-serif; color: #fff; display: flex; flex-direction: column; gap: 6px; }
+#ctlbar b { color: #ffe14c; font-weight: 600; } #ctlbar .r { display: flex; flex-wrap: wrap; gap: 6px; } #ctlbar button { font: 14px system-ui, sans-serif; padding: 6px 10px; text-align: center; }
