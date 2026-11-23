@@ -56,7 +56,20 @@ addEventListener('gamepadconnected', (e) => ui.toast(`🎮 Controller ${e.gamepa
 // ------------------------------------------------------------ PWA
 let installEvt = null;
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (G.title) titleMenu(); });
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // Auto-update: check for a new version on launch, when the app comes back to the foreground, and every 30 minutes.
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    const check = () => { if (navigator.onLine) reg.update().catch(() => {}); };
+    check(); setInterval(check, 30 * 60 * 1000); document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  }).catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    if (G.title || !G.save) { reloading = true; location.reload(); return; }
+    G.autosave?.(true); G.updateReady = true; ui.toast('✨ Hakma was updated — it loads next time you return to the title screen', 6000);
+  });
+}
 
 // ------------------------------------------------------------ title scene
 const parade = [];
@@ -126,7 +139,7 @@ function startGame(slot, save) {
   ui.banner(G.world.map.name); writeSlot(slot, save);
   if (!save.flags.topic) setTimeout(() => ui.toast('★ Walk to the desk (top of the room) and press A to choose your topic.', 5000), 600);
 }
-G.toTitle = () => { G.title = true; G.save = null; G.scene = titleScene; document.getElementById('hud').innerHTML = ''; audio.play('title', 'hakma-title', 'title'); titleMenu(); };
+G.toTitle = () => { if (G.updateReady) { G.autosave?.(true); location.reload(); return; } G.title = true; G.save = null; G.scene = titleScene; document.getElementById('hud').innerHTML = ''; audio.play('title', 'hakma-title', 'title'); titleMenu(); };
 
 // ------------------------------------------------------------ loop
 let last = performance.now();
