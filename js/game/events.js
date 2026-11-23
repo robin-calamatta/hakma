@@ -170,7 +170,7 @@ const handlers = {
   async sign(o) { await say(o.text); },
   async item(o) {
     const it = ITEMS[o.item]; S().bag[o.item] = (S().bag[o.item] || 0) + (o.count || 1); S().taken[o.key] = 1; audio.sfx('item');
-    await say(`Found ${o.count > 1 ? o.count + '× ' : 'a '}*${it.name}*!`);
+    await say(`${o.hidden ? 'Something was glinting here... ' : ''}Found ${o.count > 1 ? o.count + '× ' : 'a '}*${it.name}*!`);
   },
   async partner() {
     const w = W(), s = S(); const m = G.world.followMon(); if (!m) return; const sp = w.species[m.sp]; const name = monName(w, m);

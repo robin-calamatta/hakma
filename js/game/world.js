@@ -211,7 +211,7 @@ export class World {
     if (phase.dark > 0.01) {
       for (const p of this.lp) lights.push({ x: p.px - cx + 8, y: p.py - cy + 4, r: 56 });
       for (const b of m.buildings) { const roofH = (b.h - 2) * TS; for (let i = 0; i < b.w; i++) { const wx = b.x * TS + i * TS + 8 - cx, wy = b.y * TS + roofH + 11 - cy; if (wx < -30 || wy < -30 || wx > view.w + 30 || wy > view.h + 30) continue; lights.push({ x: wx, y: wy, r: i === Math.floor(b.w / 2) ? 30 : 22, warm: true, a: 0.9 }); } }
-      for (const o of this.objs) if ((o.kind === 'item' || o.kind === 'note') && this.visible(o)) lights.push({ x: o.px - cx + 8, y: o.py - cy + 8, r: 16, a: 0.6 });
+      for (const o of this.objs) if ((o.kind === 'item' || o.kind === 'note') && !o.hidden && this.visible(o)) lights.push({ x: o.px - cx + 8, y: o.py - cy + 8, r: 16, a: 0.6 });
     }
     drawLighting(g, view.w, view.h, phase, lights);
     if (input.runLock.some((v, i) => v && i < this.lp.length)) { g.font = '8px "Press Start 2P"'; g.textAlign = 'right'; const tx = 'RUN ON'; const w = g.measureText(tx).width + 8; g.fillStyle = 'rgba(20,16,28,0.8)'; g.fillRect(view.w - w - 4, view.h - 16, w, 12); g.fillStyle = '#ffd23f'; g.fillText(tx, view.w - 8, view.h - 7); }
@@ -231,6 +231,7 @@ export class World {
       if (o.kind === 'trainer' && !G.save.trainers[o.key]) { /* undefeated: subtle marker */ }
       return;
     }
+    if (o.hidden) { const ph = (this.t * 0.8 + (o.x * 7 + o.y * 13) % 10 / 10) % 2.6; if (ph < 0.5) { const a = Math.sin(ph / 0.5 * Math.PI); g.fillStyle = `rgba(255,255,230,${a})`; const cx2 = Math.round(x) + 8, cy2 = Math.round(y) + 9; g.fillRect(cx2 - 1, cy2 - 3, 2, 6); g.fillRect(cx2 - 3, cy2 - 1, 6, 2); } return; }
     drawObject(g, o.kind, Math.round(x), Math.round(y), this.t);
     if (o.kind === 'station') { g.fillStyle = '#ffd23f'; g.font = '8px "Press Start 2P"'; g.textAlign = 'center'; g.fillText({ match: '≡', sequence: '#', speed: '!' }[o.game], Math.round(x) + 8, Math.round(y) - 1 + Math.sin(this.t * 3) * 1.5); }
   }

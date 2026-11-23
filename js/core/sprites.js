@@ -10,14 +10,15 @@ const OUT = '#14101c';
 const PLANS = ['biped', 'quad', 'blob', 'serpent', 'bird', 'floater', 'drake', 'quad', 'biped', 'drake'];
 const TYPE_HUE = { logic: 212, cipher: 275, spark: 48, data: 140, structure: 26, flux: 8, normal: 0 };
 export function monsterCanvas(sp, back = false) {
-  const key = 'm' + sp.uidKey + (back ? 'b' : 'f');
+  const key = 'm2' + sp.uidKey + (back ? 'b' : 'f');
   if (cache.has(key)) return cache.get(key);
-  const S = 56, M = new Uint8Array(S * S);
+  const U = 1.5; // render at 1.5x the old resolution for finer detail (callers scale to their own size)
+  const S = 84, M = new Uint8Array(S * S);
   const lineR = rng(sp.lineSeed); const r = rng(sp.seed);
   const plan = sp.plan || PLANS[Math.floor(lineR() * PLANS.length)];
   const stages = sp.stages, st = sp.stage;
   const s = stages === 1 ? 0.92 : stages === 2 ? [0.74, 1][st] : [0.62, 0.82, 1][st];
-  const G = S - 3; // ground line
+  const G = S - 4; // ground line
   const set = (x, y, v) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= S || y >= S) return; M[y * S + x] = v; };
   const get = (x, y) => (x < 0 || y < 0 || x >= S || y >= S ? 0 : M[y * S + x]);
   // mirrored primitives (dx measured from centre line)
@@ -37,7 +38,7 @@ export function monsterCanvas(sp, back = false) {
       if (neg && pos) continue; set(S / 2 + x, y, v); set(S / 2 - 1 - x, y, v);
     }
   };
-  const k = (v) => v * s;
+  const k = (v) => v * s * U;
   const ellA = (cx, cy, rx, ry, v, onlyEmpty = false) => { for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) { const nx = (x - cx) / rx, ny = (y - cy) / ry; if (nx * nx + ny * ny > 1) continue; if (onlyEmpty && get(x, y)) continue; set(x, y, v); } };
   const fWings = plan === 'drake' || (plan !== 'bird' && lineR() < 0.22);
   const fTail = plan !== 'serpent' && plan !== 'floater' && lineR() < 0.6;
@@ -97,17 +98,18 @@ export function monsterCanvas(sp, back = false) {
   if (fSpikes) { const n2 = 2 + st; for (let i = 0; i < n2; i++) { const by = head.y - head.ry * 0.2 + i * k(5), bx = head.rx * 0.9 + i * k(1.5); tri(bx - k(1), by, bx + k(5), by - k(4), bx, by + k(3), 3); } }
   // body pattern
   const pat = Math.floor(lineR() * 4);
-  if (pat === 1) for (let y = 0; y < S; y += 4) for (let x = 0; x < S; x++) if (get(x, y) === 1) set(x, y, 8);
-  if (pat === 2) for (let i = 0; i < 14; i++) { const x = r.int(0, S - 1), y = r.int(0, S - 1); if (get(x, y) === 1) { set(x, y, 8); set(x + 1, y, 8); set(x, y + 1, 8); } }
-  if (sp.type === 'logic' && st > 0) for (let y = Math.floor(G - k(20)); y < G - k(6); y += 5) for (let x = 0; x < S; x++) if (get(x, y) === 1 && (x + y) % 7 < 4) set(x, y, 7);
+  if (pat === 1) for (let y = 0; y < S; y += 6) for (let x = 0; x < S; x++) if (get(x, y) === 1) set(x, y, 8);
+  if (pat === 2) for (let i = 0; i < 26; i++) { const x = r.int(0, S - 1), y = r.int(0, S - 1); if (get(x, y) === 1) { set(x, y, 8); set(x + 1, y, 8); set(x, y + 1, 8); } }
+  if (sp.type === 'logic' && st > 0) for (let y = Math.floor(G - k(20)); y < G - k(6); y += 7) for (let x = 0; x < S; x++) if (get(x, y) === 1 && (x + y) % 7 < 4) set(x, y, 7);
   // face
   if (!back) {
     const ey = head.y + (head.inBody ? -k(1) : 0), ex = head.rx * 0.42, er = Math.max(1.6, k(2.6));
     if (eyeStyle === 3) { ell(0, ey, er * 1.6, er * 1.5, 5); ellA(S / 2 - 0.5, ey + er * 0.3, er * 0.7, er * 0.9, 6); set(S / 2 - er * 0.6, ey - er * 0.6, 9); }
     else {
       ell(ex, ey, er, er * (eyeStyle === 2 ? 0.8 : 1.15), 5);
-      if (eyeStyle === 2) ell(ex, ey, er * 0.3, er * 0.8, 6); else ell(ex - er * 0.15, ey + er * 0.35, er * 0.55, er * 0.75, 6);
-      set(S / 2 + ex - er * 0.5, ey - er * 0.5, 9); set(S / 2 - 1 - ex - er * 0.5, ey - er * 0.5, 9);
+      if (eyeStyle === 2) ell(ex, ey, er * 0.3, er * 0.8, 6); else { ell(ex - er * 0.12, ey + er * 0.3, er * 0.72, er * 0.88, 10); ell(ex - er * 0.15, ey + er * 0.4, er * 0.42, er * 0.58, 6); }
+      for (const sx of [S / 2 + ex - er * 0.45, S / 2 - 1 - ex - er * 0.45]) { set(sx, ey - er * 0.45, 9); set(sx + 1, ey - er * 0.45, 9); set(sx, ey - er * 0.45 + 1, 9); set(sx + er * 0.7, ey + er * 0.5, 9); }
+      if (lineR() < 0.55 && !head.inBody) ell(ex + er * 0.9, ey + er * 1.35, er * 0.7, er * 0.35, 11, false);
       if (eyeStyle === 1 || st >= 1) { for (let i = -1; i <= 1; i++) { set(S / 2 + ex + i, ey - er - 1 + i * 0.7, 4); set(S / 2 - 1 - ex - i, ey - er - 1 + i * 0.7, 4); } }
     }
     if (sp.type === 'cipher' && st >= 1 && eyeStyle !== 3) { ell(0, head.y - head.ry * 0.55, k(1.5), k(1.5), 7); }
@@ -121,18 +123,32 @@ export function monsterCanvas(sp, back = false) {
   const accent = hsl((hv + [150, 180, 210, 40, -40][hash(sp.lineSeed + 'c') % 5] + 360) % 360, 65, 42);
   const belly = shade(base, 0.55);
   const glow = sp.type === 'flux' ? '#ffd23f' : sp.type === 'logic' ? '#9ff3ff' : sp.type === 'cipher' ? '#ff8bff' : sp.type === 'spark' ? '#fffbb0' : sp.type === 'data' ? '#c8ff9f' : '#ffe7b0';
-  const col = { 1: base, 2: belly, 3: accent, 4: '#2a1f33', 5: '#ffffff', 6: '#1b1530', 7: glow, 8: shade(base, -0.25), 9: '#ffffff' };
+  const iris = hsl((hv + 180) % 360, 70, 45);
+  const col = { 1: base, 2: belly, 3: accent, 4: '#2a1f33', 5: '#ffffff', 6: '#1b1530', 7: glow, 8: shade(base, -0.25), 9: '#ffffff', 10: iris, 11: mix(base, '#ff6a8a', 0.55), 12: '#f4ecd8' };
+  // claws: little pale tips where feet/legs touch the ground
+  if (plan !== 'floater' && plan !== 'serpent') for (let x = 0; x < S; x++) for (const y of [G, G + 1]) if (get(x, y) === 3 && !get(x, y + 1) && x % 3 === 0) set(x, y, 12);
+  // find each part's vertical extent for soft top-light gradient
+  let top = S, bot = 0; for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (get(x, y)) { if (y < top) top = y; if (y > bot) bot = y; }
+  const BAYER = [[0, 2], [3, 1]];
   const [c, g] = mk(S, S);
   const img = g.createImageData(S, S);
   const put = (x, y, hex) => { const [R, G2, B] = hexToRgb(hex); const i = (y * S + x) * 4; img.data[i] = R; img.data[i + 1] = G2; img.data[i + 2] = B; img.data[i + 3] = 255; };
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const v = get(x, y);
-    if (!v) { if (get(x + 1, y) || get(x - 1, y) || get(x, y + 1) || get(x, y - 1)) put(x, y, OUT); continue; }
+    if (!v) { const n = get(x + 1, y) || get(x - 1, y) || get(x, y + 1) || get(x, y - 1); if (n) put(x, y, n <= 3 || n === 8 ? mix(OUT, col[n], 0.18) : OUT); continue; }
     let hex = col[v];
     if (back && (v === 1 || v === 3 || v === 8)) hex = shade(hex, -0.08);
     if (v <= 3 || v === 8) {
-      if (!get(x, y - 1) || !get(x - 1, y - 1)) hex = shade(hex, 0.28);
-      else if (!get(x, y + 1) || !get(x + 1, y + 2) || !get(x + 2, y + 1)) hex = shade(hex, -0.28);
+      // soft gradient (lighter on top), dithered so it reads as pixel art
+      const gy = (y - top) / Math.max(1, bot - top); const d = (BAYER[y & 1][x & 1] / 4 - 0.375) * 0.08; hex = shade(hex, 0.1 - gy * 0.2 + d);
+      if (!get(x, y - 1) || !get(x - 1, y - 1)) hex = shade(hex, 0.3);
+      else if (!get(x, y - 2) && !get(x - 1, y - 2)) hex = shade(hex, 0.13);
+      else if (!get(x, y + 1) || !get(x + 1, y + 2) || !get(x + 2, y + 1)) hex = shade(hex, -0.3);
+      else if (!get(x + 2, y + 2) || !get(x + 3, y + 1)) hex = shade(hex, -0.13);
+      // inner contour where two different body parts overlap (limb in front of body, accents)
+      const nb = [get(x + 1, y), get(x, y + 1), get(x - 1, y), get(x, y - 1)];
+      if (nb.some((q) => q && q !== v && q <= 3 && v < q)) hex = shade(hex, -0.38);
+      if (v === 2 && y % 3 === 0) hex = shade(hex, -0.1); // belly plates
     }
     put(x, y, hex);
   }
@@ -149,42 +165,83 @@ export function personPalette(seed, opt = {}) {
   const r = rng(seed);
   return { skin: opt.skin || r.pick(SKIN), hair: opt.hair || r.pick(HAIR), shirt: opt.shirt || r.pick(CLOTH), pants: opt.pants || shade(r.pick(CLOTH), -0.4), shoes: '#2a2230', hat: opt.hat ?? (r() < 0.25 ? r.pick(CLOTH) : null), coat: opt.coat || false, long: opt.long ?? r() < 0.4 };
 }
-// returns a sheet: 3 frames x 4 dirs (down, up, left, right) of 16x20
+// returns a sheet: 3 frames x 4 dirs (down, up, left, right) of 16x20 — shaded, with faces, collars, belts and hair shine
 export function personSheet(pal) {
-  const key = 'p' + JSON.stringify(pal); if (cache.has(key)) return cache.get(key);
+  const key = 'p2' + JSON.stringify(pal); if (cache.has(key)) return cache.get(key);
   const W = 16, H = 20; const [c, g] = mk(W * 3, H * 4);
   const dirs = ['down', 'up', 'left', 'right'];
+  const skin = pal.skin, hair = pal.hair, shirtC = pal.coat ? '#f2f2f6' : pal.shirt, pants = pal.pants, shoes = pal.shoes || '#2a2230';
+  const eye = '#1b1530', blush = mix(skin, '#ff7a8a', 0.35), mouth = shade(skin, -0.32), belt = '#3a2a22', buckle = '#e8c050';
   dirs.forEach((dir, di) => {
     for (let f = 0; f < 3; f++) {
-      const M = []; for (let y = 0; y < H; y++) M.push(new Array(W).fill(null));
-      const R = (x, y, w, h, col) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (i >= 0 && i < W && j >= 0 && j < H) M[j][i] = col; };
-      const bob = f === 0 ? 0 : 0;
+      const C = [], Mt = []; for (let y = 0; y < H; y++) { C.push(new Array(W).fill(null)); Mt.push(new Array(W).fill(null)); }
+      const P = (x, y, col, mat) => { if (x >= 0 && x < W && y >= 0 && y < H) { C[y][x] = col; Mt[y][x] = mat; } };
+      const R = (x, y, w, h, col, mat) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) P(i, j, col, mat); };
       const side = dir === 'left' || dir === 'right';
-      // legs
-      const legC = pal.coat ? pal.pants : pal.pants;
+      const step = f === 0 ? 0 : f === 1 ? 1 : -1;
+      // ---- legs & shoes
       if (!side) {
-        const l = f === 1 ? -1 : 0, rr = f === 2 ? -1 : 0;
-        R(5, 15, 6, 2, legC); R(5, 17 + l, 2, 2, legC); R(9, 17 + rr, 2, 2, legC); R(5, 19 + l, 2, 1, pal.shoes); R(9, 19 + rr, 2, 1, pal.shoes);
-      } else if (f === 0) { R(6, 15, 4, 4, legC); R(6, 19, 4, 1, pal.shoes); }
-      else { R(6, 15, 4, 2, legC); R(4 + (f === 1 ? 0 : 1), 17, 2, 2, legC); R(9 - (f === 1 ? 0 : 1), 17, 2, 2, legC); R(4 + (f === 1 ? 0 : 1), 19, 2, 1, pal.shoes); R(9 - (f === 1 ? 0 : 1), 19, 2, 1, pal.shoes); }
-      // torso & arms
-      const shirt = pal.coat ? '#f4f4f8' : pal.shirt;
-      if (!side) { R(5, 10, 6, 5, shirt); R(4, 10, 1, 4, shirt); R(11, 10, 1, 4, shirt); R(4, 14, 1, 1, pal.skin); R(11, 14, 1, 1, pal.skin); if (pal.coat) { R(7, 10, 2, 5, pal.shirt); R(5, 15, 6, 1, '#f4f4f8'); } }
-      else { R(6, 10, 4, 5, shirt); const sw = f === 0 ? 0 : f === 1 ? -1 : 1; R(7 + sw, 11, 2, 3, shade(shirt, -0.15)); R(7 + sw, 14, 2, 1, pal.skin); }
-      // head
-      R(4 + (side ? 1 : 0), 2, side ? 7 : 8, 8, pal.skin);
-      if (dir === 'down') { R(4, 1, 8, 3, pal.hair); R(4, 4, 1, pal.long ? 6 : 3, pal.hair); R(11, 4, 1, pal.long ? 6 : 3, pal.hair); R(6, 6, 1, 2, '#1b1530'); R(9, 6, 1, 2, '#1b1530'); R(7, 9, 2, 0, '#000'); }
-      if (dir === 'up') { R(4, 1, 8, 8, pal.hair); if (pal.long) R(4, 9, 8, 2, pal.hair); }
-      if (side) { R(5, 1, 7, 3, pal.hair); R(5, 4, 3, pal.long ? 6 : 4, pal.hair); R(10, 6, 1, 2, '#1b1530'); }
-      if (pal.hat) { R(3, 0, 10, 2, pal.hat); R(4, -1, 8, 2, pal.hat); if (dir === 'down') R(3, 2, 10, 1, shade(pal.hat, -0.3)); }
-      // flip left
-      if (dir === 'left') for (const row of M) row.reverse();
-      // outline + blit
-      const ox = f * W, oy = di * H + bob;
+        const lY = f === 1 ? -1 : 0, rY = f === 2 ? -1 : 0;
+        R(5, 16, 6, 1, pants, 'pants'); R(5, 17 + lY, 2, 2, pants, 'pants'); R(9, 17 + rY, 2, 2, pants, 'pants');
+        R(5, 19 + lY, 2, 1, shoes, 'shoes'); R(9, 19 + rY, 2, 1, shoes, 'shoes'); P(5, 19 + lY, shade(shoes, 0.5), 'shoes'); P(9, 19 + rY, shade(shoes, 0.5), 'shoes');
+      } else if (f === 0) { R(6, 16, 4, 3, pants, 'pants'); P(8, 17, shade(pants, -0.25), 'pants'); P(8, 18, shade(pants, -0.25), 'pants'); R(6, 19, 4, 1, shoes, 'shoes'); P(9, 19, shade(shoes, 0.5), 'shoes'); }
+      else { R(6, 16, 4, 1, pants, 'pants'); const a = 5 + (f === 1 ? -1 : 1), b2 = 9 - (f === 1 ? -1 : 1); R(a, 17, 2, 2, shade(pants, -0.2), 'pants'); R(b2, 17, 2, 2, pants, 'pants'); R(a, 19, 2, 1, shade(shoes, -0.1), 'shoes'); R(b2, 19, 2, 1, shoes, 'shoes'); P(b2 + 1, 19, shade(shoes, 0.5), 'shoes'); }
+      // ---- torso, belt, arms
+      if (!side) {
+        R(5, 10, 6, 5, shirtC, 'shirt'); R(5, 15, 6, 1, belt, 'belt'); if (dir === 'down') { P(7, 15, buckle, 'belt'); P(8, 15, buckle, 'belt'); }
+        const aL = f === 1 ? 1 : 0, aR = f === 2 ? 1 : 0;
+        R(4, 10, 1, 4 - aL, shirtC, 'shirt'); R(11, 10, 1, 4 - aR, shirtC, 'shirt'); P(4, 14 - aL, skin, 'skin'); P(11, 14 - aR, skin, 'skin');
+        if (dir === 'down') { R(6, 10, 4, 1, shade(shirtC, 0.25), 'collar'); P(7, 10, skin, 'skin'); P(8, 10, skin, 'skin'); P(7, 11, shade(shirtC, -0.2), 'shirt'); P(8, 11, shade(shirtC, -0.2), 'shirt'); }
+        else R(6, 10, 4, 1, shade(shirtC, -0.15), 'collar');
+        if (pal.coat) { R(7, 11, 2, 4, pal.shirt, 'shirt'); R(5, 15, 6, 1, '#f2f2f6', 'coat'); R(4, 14, 8, 2, '#f2f2f6', 'coat'); if (dir === 'down') { P(6, 13, '#c8c8d8', 'coat'); P(9, 13, '#c8c8d8', 'coat'); } }
+      } else {
+        R(6, 10, 4, 5, shirtC, 'shirt'); R(6, 15, 4, 1, belt, 'belt'); P(9, 10, shade(shirtC, 0.25), 'collar');
+        const sw = step; R(7 + sw, 11, 2, 3, shade(shirtC, -0.18), 'arm'); P(7 + sw, 14, skin, 'skin'); P(8 + sw, 14, shade(skin, -0.1), 'skin');
+        if (pal.coat) { R(6, 15, 4, 1, '#f2f2f6', 'coat'); R(6, 14, 1, 2, '#f2f2f6', 'coat'); }
+      }
+      // ---- head
+      if (!side) {
+        R(4, 3, 8, 6, skin, 'skin'); R(5, 9, 6, 1, skin, 'skin'); P(7, 10, shade(skin, -0.15), 'skin'); P(8, 10, shade(skin, -0.15), 'skin');
+        P(3, 6, shade(skin, -0.12), 'skin'); P(12, 6, shade(skin, -0.12), 'skin'); P(3, 7, shade(skin, -0.2), 'skin'); P(12, 7, shade(skin, -0.2), 'skin');
+      } else { R(5, 3, 7, 6, skin, 'skin'); R(6, 9, 5, 1, skin, 'skin'); P(12, 6, skin, 'skin'); P(12, 7, shade(skin, -0.08), 'skin'); P(7, 6, shade(skin, -0.22), 'skin'); P(7, 7, shade(skin, -0.22), 'skin'); }
+      if (dir === 'down') {
+        R(4, 1, 8, 3, hair, 'hair'); R(5, 0, 6, 1, hair, 'hair'); P(4, 4, hair, 'hair'); P(5, 4, hair, 'hair'); P(6, 4, hair, 'hair'); P(9, 4, hair, 'hair'); P(10, 4, hair, 'hair'); P(11, 4, hair, 'hair'); P(8, 4, hair, 'hair');
+        R(3, 3, 1, pal.long ? 8 : 3, hair, 'hair'); R(12, 3, 1, pal.long ? 8 : 3, hair, 'hair'); if (pal.long) { R(4, 5, 1, 4, hair, 'hair'); R(11, 5, 1, 4, hair, 'hair'); }
+        P(6, 5, shade(hair, -0.2), 'brow'); P(9, 5, shade(hair, -0.2), 'brow');
+        P(6, 6, eye, 'eye'); P(6, 7, eye, 'eye'); P(9, 6, eye, 'eye'); P(9, 7, eye, 'eye'); P(6, 6, '#3a4a8a', 'eye');  P(9, 6, '#3a4a8a', 'eye');
+        P(5, 8, blush, 'skin'); P(10, 8, blush, 'skin'); P(7, 8, mouth, 'skin'); P(8, 8, mouth, 'skin');
+      }
+      if (dir === 'up') { R(4, 1, 8, 8, hair, 'hair'); R(5, 0, 6, 1, hair, 'hair'); R(3, 3, 1, 5, hair, 'hair'); R(12, 3, 1, 5, hair, 'hair'); P(7, 9, shade(skin, -0.15), 'skin'); P(8, 9, shade(skin, -0.15), 'skin'); if (pal.long) { R(4, 9, 8, 3, hair, 'hair'); } R(6, 4, 4, 1, shade(hair, -0.15), 'hair'); }
+      if (side) {
+        R(5, 1, 7, 3, hair, 'hair'); R(6, 0, 5, 1, hair, 'hair'); R(5, 4, 2, pal.long ? 6 : 4, hair, 'hair'); R(4, 3, 1, pal.long ? 7 : 4, hair, 'hair'); P(11, 4, hair, 'hair'); P(10, 4, hair, 'hair');
+        P(10, 5, shade(hair, -0.2), 'brow'); P(10, 6, '#3a4a8a', 'eye'); P(10, 7, eye, 'eye'); P(12, 8, skin, 'skin'); P(11, 8, mouth, 'skin'); P(9, 8, blush, 'skin');
+      }
+      if (pal.hat) {
+        const hc = pal.hat; R(4, 0, 8, 2, hc, 'hat'); R(5, -1, 6, 1, hc, 'hat'); R(4, 2, 8, 1, shade(hc, -0.25), 'hatband');
+        if (dir === 'down') R(3, 3, 10, 1, shade(hc, -0.35), 'brim'); if (side) R(9, 3, 5, 1, shade(hc, -0.35), 'brim');
+        if (dir !== 'up') P(dir === 'down' ? 7 : 8, 0, shade(hc, 0.4), 'hat');
+      }
+      // ---- shading: light from top-left
+      const SHADE = new Set(['hair', 'shirt', 'pants', 'hat', 'coat', 'skin', 'arm']);
+      const out = C.map((row) => row.slice());
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const v = M[y][x];
-        if (v) { g.fillStyle = v; g.fillRect(ox + x, oy + y, 1, 1); }
-        else if ((M[y][x - 1]) || (M[y][x + 1]) || (M[y - 1] && M[y - 1][x]) || (M[y + 1] && M[y + 1][x])) { g.fillStyle = OUT; g.fillRect(ox + x, oy + y, 1, 1); }
+        const m = Mt[y][x]; if (!m || !SHADE.has(m)) continue; let col = C[y][x];
+        const same = (xx, yy) => xx >= 0 && yy >= 0 && xx < W && yy < H && Mt[yy][xx] === m;
+        if (m === 'skin') { if (!same(x + 1, y) && dir !== 'right' && dir !== 'left') col = shade(col, -0.12); out[y][x] = col; continue; }
+        if (!same(x - 1, y)) col = shade(col, 0.16); else if (!same(x + 1, y)) col = shade(col, -0.2);
+        if (!same(x, y + 1) && m !== 'pants') col = shade(col, -0.12);
+        if ((m === 'hair' || m === 'hat') && !same(x, y - 1)) col = shade(col, 0.22);
+        out[y][x] = col;
+      }
+      if (dir !== 'up') { const hy = 1; for (const hx of [5, 6]) if (Mt[hy][hx] === 'hair') out[hy][hx] = shade(hair, 0.45); } else { for (const hx of [6, 7, 8]) if (Mt[2][hx] === 'hair') out[2][hx] = shade(hair, 0.4); }
+      if (dir === 'left') { for (const row of out) row.reverse(); for (const row of Mt) row.reverse(); }
+      // ---- outline (tinted by the neighbouring colour) + blit
+      const ox = f * W, oy = di * H;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const v = out[y][x];
+        if (v) { g.fillStyle = v; g.fillRect(ox + x, oy + y, 1, 1); continue; }
+        const n = (out[y][x - 1]) || (out[y][x + 1]) || (out[y - 1] && out[y - 1][x]) || (out[y + 1] && out[y + 1][x]);
+        if (n) { g.fillStyle = mix(OUT, n, 0.16); g.fillRect(ox + x, oy + y, 1, 1); }
       }
     }
   });

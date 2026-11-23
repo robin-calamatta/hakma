@@ -1,6 +1,6 @@
 // On-screen controls you can drag anywhere and resize. Layout is saved per orientation in localStorage.
 const KEY = 'hakma.touchLayout.v1';
-const IDS = { dpad: 'D-pad', a: 'A button', b: 'B button', start: 'Menu button', run: 'Run button' };
+const IDS = { dpad: 'Movement stick / D-pad', a: 'A button', b: 'B button', start: 'Menu button', run: 'Run button' };
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}
 const orient = () => (innerHeight > innerWidth ? 'portrait' : 'landscape');

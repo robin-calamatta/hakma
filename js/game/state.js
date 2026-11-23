@@ -19,7 +19,7 @@ export const ITEMS = {
   tm_data:      { name: 'Disc: Big Data Crash', price: 2500, desc: 'Technique Disc. Teaches Big Data Crash (Data, 85).', kind: 'tm', type: 'data', move: 'Big Data Crash', badge: 3 },
   tm_structure: { name: 'Disc: Foundation Quake', price: 2500, desc: 'Technique Disc. Teaches Foundation Quake (Structure, 85).', kind: 'tm', type: 'structure', move: 'Foundation Quake', badge: 3 },
   tm_flux:      { name: 'Disc: Refactor Blaze', price: 2500, desc: 'Technique Disc. Teaches Refactor Blaze (Flux, 85).', kind: 'tm', type: 'flux', move: 'Refactor Blaze', badge: 3 },
-  shard:      { name: 'Insight Shard', price: 0, desc: 'Earned by learning. Raises a monster by one level.', kind: 'level' },
+  shard:      { name: 'Insight Shard', price: 0, desc: 'Earned by learning. Raises a monster by one level. Can\'t be used during battle.', kind: 'level' },
 };
 
 export function defaultSettings() { return { music: 0.55, sfx: 0.7, timer: true, timerSec: 25, textSpeed: 2, every: true, showControls: true }; }
@@ -55,7 +55,14 @@ export const FIELD_SKILLS = {
 export const tmMove = (id) => ({ name: ITEMS[id].move, power: 85, type: ITEMS[id].type, kind: 'hit', lvl: 1, tm: true });
 export const movesOf = (W, m) => W.species[m.sp].moves.filter((mv) => mv.lvl <= m.lvl).concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
 export const monName = (W, m) => m.nick || W.species[m.sp].name;
-export function healMon(W, m) { m.hp = maxHp(W, m); }
+// Status conditions. Flux moves can burn, Cipher moves can poison, Data moves can make a monster sick.
+// They last until healed at a Mend Station / home, or with any healing item.
+export const STATUS = {
+  psn: { name: 'Poisoned', tag: 'PSN', col: '#b050e0', from: 'cipher', chance: 0.22, tick: 1 / 10, verb: 'was poisoned' },
+  brn: { name: 'Burned', tag: 'BRN', col: '#ff7030', from: 'flux', chance: 0.22, tick: 1 / 16, verb: 'was burned' },
+  sick: { name: 'Sick', tag: 'SICK', col: '#7cbf3a', from: 'data', chance: 0.18, tick: 1 / 20, verb: 'caught a bug and feels sick' },
+};
+export function healMon(W, m) { m.hp = maxHp(W, m); delete m.status; }
 export function healAll(W, save) { for (const p of save.players) { for (const m of p.party) healMon(W, m); } }
 export function addMon(save, pi, mon) {
   const p = save.players[pi] || save.players[0];

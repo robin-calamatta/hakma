@@ -1,4 +1,5 @@
 // Battles: every attack is a question. Correct = hit, fast = Quick Recall crit, wrong = miss + explanation.
+import { STATUS } from './state.js';
 import { G, ITEMS, xpToNext, makeMon, stats, maxHp, movesOf, monName, gainXp, checkEvolve, evolve, addMon, recordAnswer, badgeCount } from './state.js';
 import { view } from '../core/view.js';
 import { ui, fmt } from './ui.js';
@@ -64,19 +65,31 @@ class BattleScene {
     if (this.bg.width !== view.w || this.bg.height !== view.h) this.bg = makeBg(this.o.biome || G.world?.map?.biome || 'meadow', this.o.kind);
     g.drawImage(this.bg, 0, 0);
     const bob = (ph) => Math.round(Math.sin(this.t * 2.4 + ph) * 1.5);
-    const drawMon = (sp, back, x, y, s, st, ph) => {
-      const c = monsterCanvas(sp, back); const w = 56 * s * st.s, h = 56 * s * st.s;
+    const drawMon = (sp, back, x, y, s, st, ph, mon, enemy) => {
+      let c = monsterCanvas(sp, back); const w = 56 * s * st.s; let h = 56 * s * st.s;
+      // ---- condition looks: injured (low HP), poisoned, burned, sick
+      const hpPct = mon ? clamp(mon.hp / this.hpMax(mon, enemy), 0, 1) : 1; const status = mon && mon.hp > 0 ? mon.status : null;
+      let dx = 0, dy = 0; let tint = null, ta = 0;
+      if (mon && mon.hp > 0 && hpPct < 0.5) { const sq = hpPct < 0.25 ? 0.93 : 0.97; dy += h * (1 - sq); h *= sq; } // slumped
+      if (status === 'sick') { dx = Math.sin(this.t * 4.5) * 1.8; tint = '#86c240'; ta = 0.28 + Math.sin(this.t * 2) * 0.06; }
+      if (status === 'psn') { tint = '#a040d8'; ta = 0.22 + (Math.sin(this.t * 3.2) + 1) * 0.1; }
+      if (status === 'brn') { tint = '#ff5a1a'; ta = 0.16 + (Math.sin(this.t * 13) + Math.sin(this.t * 7.3)) * 0.05 + 0.06; }
+      if (!tint && mon && mon.hp > 0 && hpPct < 0.25) { tint = '#5a0a14'; ta = 0.14 + (Math.sin(this.t * 5) + 1) * 0.05; }
+      if (tint) { const tc = this.tintCv || (this.tintCv = document.createElement('canvas')); tc.width = c.width; tc.height = c.height; const tg = tc.getContext('2d'); tg.imageSmoothingEnabled = false; tg.drawImage(c, 0, 0); tg.globalCompositeOperation = 'source-atop'; tg.fillStyle = tint; tg.globalAlpha = ta; tg.fillRect(0, 0, tc.width, tc.height); tg.globalAlpha = 1; tg.globalCompositeOperation = 'source-over'; c = tc; }
+      const bobv = hpPct < 0.25 ? Math.round(Math.sin(this.t * 5 + ph) * 1.2) : bob(ph);
       g.globalAlpha = st.a;
-      if (sp.stage === sp.stages - 1 && sp.stages > 1) { g.shadowColor = TYPES[sp.type].color; g.shadowBlur = 8 + Math.sin(this.t * 3) * 3; }
-      g.drawImage(c, Math.round(x + st.x - w / 2), Math.round(y + st.y - h + bob(ph)), Math.round(w), Math.round(h));
+      if (sp.stage === sp.stages - 1 && sp.stages > 1 && hpPct >= 0.25) { g.shadowColor = TYPES[sp.type].color; g.shadowBlur = 8 + Math.sin(this.t * 3) * 3; }
+      const X = Math.round(x + st.x - w / 2 + dx), Y = Math.round(y + st.y - h + bobv + dy);
+      g.drawImage(c, X, Y, Math.round(w), Math.round(h));
       g.shadowBlur = 0;
+      if (mon && mon.hp > 0 && st.a > 0.5) this.drawCondition(g, X, Y, w, h, hpPct, status, ph);
       if (st.flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = st.flash; g.drawImage(c, Math.round(x + st.x - w / 2), Math.round(y + st.y - h), w, h); g.globalCompositeOperation = 'source-over'; }
       g.globalAlpha = 1;
     };
     if (this.trainerX !== null && this.o.trainerPal) { const sh = personSheet(this.o.trainerPal); g.drawImage(sh, 0, 0, 16, 20, this.trainerX - 24, 30, 48, 60); }
-    if (this.enemy && this.enemyVisible) drawMon(G.W.species[this.enemy.mon.sp], false, view.w - 92, 96 + (view.h > 216 ? 14 : 0), 1.6, this.spr('e'), 0);
+    if (this.enemy && this.enemyVisible) drawMon(G.W.species[this.enemy.mon.sp], false, view.w - 92, 96 + (view.h > 216 ? 14 : 0), 1.6, this.spr('e'), 0, this.enemy.mon, true);
     const n = this.allies.length;
-    this.allies.forEach((al, k) => { if (!al.visible) return; const p = this.allyPos(k, n); drawMon(G.W.species[al.mon.sp], true, p.x, p.y, p.s, this.spr('a' + k), k + 1); });
+    this.allies.forEach((al, k) => { if (!al.visible) return; const p = this.allyPos(k, n); drawMon(G.W.species[al.mon.sp], true, p.x, p.y, p.s, this.spr('a' + k), k + 1, al.mon, false); });
     if (this.cube) { const c = this.cube; g.fillStyle = '#14101c'; g.fillRect(c.x - 5, c.y - 5, 10, 10); g.fillStyle = c.col; g.fillRect(c.x - 4, c.y - 4, 8, 8); g.fillStyle = '#fff'; g.fillRect(c.x - 4, c.y - 4, 3, 2); }
     for (const p of this.parts) { g.globalAlpha = Math.min(1, p.life * 3); g.fillStyle = p.c; g.fillRect(Math.round(p.x), Math.round(p.y), p.s || 2, p.s || 2); }
     g.globalAlpha = 1;
@@ -84,11 +97,32 @@ class BattleScene {
     if (this.wipe !== undefined) { g.fillStyle = '#000'; for (let i = 0; i < 12; i++) { const w = view.w * this.wipe; g.fillRect(i % 2 ? view.w - w : 0, i * 18, w, 18); } }
     g.restore();
   }
+  // overlays + particles that show a monster's condition
+  drawCondition(g, X, Y, w, h, hpPct, status, ph) {
+    const t = this.t, cx = X + w / 2, u = w / 56;
+    if (hpPct < 0.5) { // bandage plaster on the upper body
+      const bx = Math.round(X + w * 0.58), by = Math.round(Y + h * 0.42);
+      g.save(); g.translate(bx, by); g.rotate(-0.5); g.fillStyle = '#14101c'; g.fillRect(-4 * u - 1, -1.5 * u - 1, 8 * u + 2, 3 * u + 2); g.fillStyle = '#f2d8b0'; g.fillRect(-4 * u, -1.5 * u, 8 * u, 3 * u); g.fillStyle = '#d8b088'; g.fillRect(-1 * u, -1.5 * u, 2 * u, 3 * u); g.restore();
+    }
+    if (hpPct < 0.25) { // scratches + sweat drop
+      g.fillStyle = '#b01828'; for (let i = 0; i < 3; i++) { const sx = X + w * 0.32 + i * 3 * u, sy = Y + h * 0.55; for (let j = 0; j < 5; j++) g.fillRect(Math.round(sx + j * u), Math.round(sy + j * u * 0.9), Math.max(1, Math.round(u)), Math.max(1, Math.round(u))); }
+      const sw = (t * 0.9 + ph * 0.3) % 1.6; if (sw < 1) { g.globalAlpha = 1 - sw; g.fillStyle = '#9fdcff'; const sx = Math.round(X + w * 0.78), sy = Math.round(Y + h * 0.2 + sw * 10); g.fillRect(sx, sy, 2, 3); g.fillRect(sx - 1, sy + 1, 4, 2); g.globalAlpha = 1; }
+    }
+    if (status === 'psn' && R() < 0.25) this.parts.push({ x: X + w * (0.25 + R() * 0.5), y: Y + h * (0.3 + R() * 0.5), vx: (R() - 0.5) * 8, vy: -18 - R() * 16, life: 0.9, c: R() < 0.5 ? '#c060ff' : '#7a20b0', s: R() < 0.3 ? 3 : 2 });
+    if (status === 'brn') {
+      if (R() < 0.45) this.parts.push({ x: X + w * (0.2 + R() * 0.6), y: Y + h * (0.45 + R() * 0.4), vx: (R() - 0.5) * 14, vy: -30 - R() * 30, life: 0.6, c: R() < 0.4 ? '#ffd23f' : R() < 0.5 ? '#ff7a2a' : '#ff3d1a', s: 2 });
+      if (R() < 0.08) this.parts.push({ x: cx + (R() - 0.5) * w * 0.4, y: Y + h * 0.2, vx: 0, vy: -14, life: 1.2, c: 'rgba(80,70,70,0.7)', s: 3 });
+    }
+    if (status === 'sick') { // dizzy swirl above the head
+      g.fillStyle = '#9fe060'; for (let i = 0; i < 3; i++) { const a = t * 3 + i * 2.09; g.fillRect(Math.round(cx + Math.cos(a) * 10 * u), Math.round(Y - 2 + Math.sin(a) * 3 * u), 2, 2); }
+      if (R() < 0.06) this.parts.push({ x: cx + (R() - 0.5) * w * 0.5, y: Y + h * 0.3, vx: 0, vy: -10, life: 1, c: '#7cbf3a', s: 2 });
+    }
+  }
   // ---------------------------------------------------- HUD
   hud() {
     const el = document.getElementById('hud'); const W = G.W;
     const box = (m, cls, extra = '') => { const sp = W.species[m.sp]; const mh = this.hpMax(m, cls === 'enemy'); const pct = clamp(m.hp / mh, 0, 1) * 100; const col = pct > 50 ? 'g' : pct > 20 ? 'y' : 'r';
-      return `<div class="bhud ${cls}"><div class="nm">${esc(monName(W, m))} <span class="lv">Lv${m.lvl}</span></div><div class="tt"><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${extra}</div><div class="hp"><i class="${col}" style="width:${pct}%"></i></div>${cls !== 'enemy' ? `<div class="hpn">${Math.max(0, Math.ceil(m.hp))}/${mh}</div>` : ''}</div>`; };
+      return `<div class="bhud ${cls}"><div class="nm">${esc(monName(W, m))} <span class="lv">Lv${m.lvl}</span></div><div class="tt"><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}${extra}</div><div class="hp"><i class="${col}" style="width:${pct}%"></i></div>${cls !== 'enemy' ? `<div class="hpn">${Math.max(0, Math.ceil(m.hp))}/${mh}</div>` : ''}</div>`; };
     let h = '';
     if (this.enemy && this.enemyVisible) h += box(this.enemy.mon, 'enemy', this.o.kind === 'wild' && G.save.caught[this.enemy.mon.sp] ? ' <span class="caughtmark">◆</span>' : '');
     h += `<div class="allyhuds ${this.allies.length > 1 ? 'compact' : ''}">` + this.allies.map((a, k) => a.visible ? box(a.mon, 'ally', this.allies.length > 1 ? ` <span class="pl" style="background:${G.save.players[a.pi].color}">P${a.pi + 1}</span>` : '') : '').join('') + '</div>';
@@ -148,10 +182,12 @@ class BattleScene {
         if (this.enemy.mon.hp <= 0) { const over = await this.enemyFainted(); if (over) return this.finish('win'); }
       }
       if (this.enemy.mon.hp > 0) { const lost = await this.enemyTurn(); if (lost) return this.finish('lose'); }
+      const t = await this.statusTick(); if (t) return this.finish(t);
     }
   }
   async allyTurn(al, k) {
     const W = G.W; const pname = G.save.players[al.pi].name;
+    if (al.mon.status === 'sick' && R() < 0.25) { this.statusBurst('a' + k, STATUS.sick.col); await this.msg(`${monName(W, al.mon)} feels too sick to move!`, 1100); return; }
     for (;;) {
       const who = this.allies.length > 1 ? `P${al.pi + 1} ${pname}: ` : '';
       this.text = `${who}What will ${monName(W, al.mon)} do?`; this.hud();
@@ -195,18 +231,49 @@ class BattleScene {
     await this.hpTo(this.enemy.mon, true, Math.max(0, this.enemy.mon.hp - dmg));
     if (res.quick) await this.msg('⚡ Quick Recall! A critical hit!', 900);
     if (eff > 1) await this.msg("It's super effective!", 900); else if (eff < 1) await this.msg("It's not very effective...", 900);
+    await this.tryInflict(this.enemy.mon, mv.type, (this.o.kind === 'wild' ? 'The wild ' : 'Foe ') + W.species[this.enemy.mon.sp].name, 'e');
+  }
+  async tryInflict(m, type, who, side) {
+    if (!m || m.hp <= 0 || m.status) return;
+    const [id, st] = Object.entries(STATUS).find(([, s]) => s.from === type) || []; if (!id) return;
+    if (G.W.species[m.sp].type === type || R() >= st.chance) return;
+    m.status = id; audio.sfx('weak'); this.statusBurst(side, st.col); this.hud(); await this.msg(`${who} ${st.verb}!`, 1100);
+  }
+  statusBurst(side, col) { const P = this.posOf(side); for (let i = 0; i < 26; i++) this.parts.push({ x: P.x + (R() - 0.5) * 46, y: P.y + 10 + R() * 30, vx: (R() - 0.5) * 30, vy: -30 - R() * 50, life: 0.9, c: col, s: 2 }); }
+  // end of each round: poison / burn / sickness chip away HP
+  async statusTick() {
+    const W = G.W;
+    for (let k = 0; k < this.allies.length; k++) {
+      const al = this.allies[k]; const m = al.mon; if (!m || m.hp <= 0 || !m.status || !al.visible) continue; const st = STATUS[m.status];
+      const dmg = Math.max(1, Math.round(maxHp(W, m) * st.tick)); this.statusBurst('a' + k, st.col); this.spr('a' + k).flash = 0.4;
+      await this.hpTo(m, false, Math.max(0, m.hp - dmg)); await this.msg(`${monName(W, m)} is hurt by being ${st.name.toLowerCase()}!`, 1000); this.spr('a' + k).flash = 0;
+      if (m.hp <= 0) {
+        m.hp = 0; await this.animFaint('a' + k); await this.msg(`${monName(W, m)} fainted!`); const p = G.save.players[al.pi];
+        if (p.party.some((x) => x.hp > 0)) await this.switchMenu(al, k, false); else { al.visible = false; al.mon = null; this.hud(); }
+      }
+    }
+    if (!this.allies.some((a) => a.mon && a.mon.hp > 0)) return 'lose';
+    const e = this.enemy.mon;
+    if (e && e.hp > 0 && e.status) {
+      const st = STATUS[e.status]; const dmg = Math.max(1, Math.round(this.hpMax(e, true) * st.tick)); this.statusBurst('e', st.col);
+      await this.hpTo(e, true, Math.max(0, e.hp - dmg)); await this.msg(`${W.species[e.sp].name} is hurt by being ${st.name.toLowerCase()}!`, 1000);
+      if (e.hp <= 0) { const over = await this.enemyFainted(); if (over) return 'win'; }
+    }
+    return null;
   }
   damage(a, aBoost, d, dBoost, mv, crit) {
     const A = stats(G.W, a), D = stats(G.W, d); const L = a.lvl;
     const stab = G.W.species[a.sp].type === mv.type ? 1.5 : 1; const eff = effectiveness(mv.type, G.W.species[d.sp].type);
     const base = (((2 * L) / 5 + 2) * mv.power * (A.atk * (1 + 0.5 * aBoost)) / D.def) / 50 + 2;
-    return { dmg: Math.max(1, Math.round(base * stab * eff * crit * (0.85 + R() * 0.15))), eff };
+    const burn = a.status === 'brn' ? 0.75 : 1;
+    return { dmg: Math.max(1, Math.round(base * stab * eff * crit * burn * (0.85 + R() * 0.15))), eff };
   }
   async enemyTurn() {
     const W = G.W; const e = this.enemy; const alive = this.allies.filter((a) => a.mon && a.mon.hp > 0); if (!alive.length) return true;
     const tgt = R.pick(alive); const k = this.allies.indexOf(tgt);
     const mv = movesOf(W, e.mon); const hits = mv.filter((m) => m.kind === 'hit');
     const ename = (this.o.kind === 'wild' ? 'The wild ' : 'Foe ') + W.species[e.mon.sp].name;
+    if (e.mon.status === 'sick' && R() < 0.25) { this.statusBurst('e', STATUS.sick.col); await this.msg(`${ename} feels too sick to move!`, 1100); return false; }
     if (e.boost < 2 && R() < 0.18) { const b = mv.find((m) => m.kind === 'boost'); if (b) { e.boost++; await this.animBoost('e'); await this.msg(`${ename} used ${b.name}! Its attack rose!`); return false; } }
     let best = hits[0], bs = -1; for (const m of hits) { const s = m.power * effectiveness(m.type, W.species[tgt.mon.sp].type) * (0.7 + R() * 0.6); if (s > bs) { bs = s; best = m; } }
     await this.msg(`${ename} used ${best.name}!`, 650);
@@ -217,6 +284,7 @@ class BattleScene {
     await this.animHit('a' + k, best.type, eff > 1);
     await this.hpTo(tgt.mon, false, Math.max(0, tgt.mon.hp - dmg));
     if (eff > 1) await this.msg("It's super effective!", 800); else if (eff < 1) await this.msg("It's not very effective...", 800);
+    await this.tryInflict(tgt.mon, best.type, monName(W, tgt.mon), 'a' + k);
     if (tgt.mon.hp <= 0) {
       tgt.mon.hp = 0; await this.animFaint('a' + k); await this.msg(`${monName(W, tgt.mon)} fainted!`);
       const p = G.save.players[tgt.pi];
@@ -258,18 +326,17 @@ class BattleScene {
     return true;
   }
   async bag(al, k) {
-    const W = G.W; const bag = G.save.bag; const ids = Object.keys(bag).filter((id) => bag[id] > 0 && ITEMS[id] && ITEMS[id].kind !== 'tm');
+    const W = G.W; const bag = G.save.bag; const ids = Object.keys(bag).filter((id) => bag[id] > 0 && ITEMS[id] && ITEMS[id].kind !== 'tm' && ITEMS[id].kind !== 'level'); // shards are field-only: no levelling up mid-battle
     if (!ids.length) { await this.msg('Your bag is empty!', 900); return 'back'; }
     const i = await ui.choose(null, ids.map((id) => ({ html: `<img class="ico" src="${itemIconSafe(id)}">${esc(ITEMS[id].name)} <span class="cnt">×${bag[id]}</span>`, disabled: ITEMS[id].kind === 'cube' && this.o.kind !== 'wild' })), { cls: 'bmenu bag' });
     if (i < 0) return 'back';
     const id = ids[i], it = ITEMS[id]; const p = G.save.players[al.pi];
     if (it.kind === 'cube') return this.capture(al, k, id);
-    const cand = p.party.map((m) => ({ html: monRow(W, m), disabled: it.kind === 'revive' ? m.hp > 0 : (m.hp <= 0 || (it.kind === 'heal' && m.hp >= maxHp(W, m))) }));
+    const cand = p.party.map((m) => ({ html: monRow(W, m), disabled: it.kind === 'revive' ? m.hp > 0 : (m.hp <= 0 || (it.kind === 'heal' && m.hp >= maxHp(W, m) && !m.status)) }));
     const t = await ui.choose(`Use ${it.name} on which monster?`, cand, { cls: 'teamlist' }); if (t < 0) return 'back';
     const m = p.party[t]; bag[id]--;
-    if (it.kind === 'heal') { audio.sfx('heal'); const to = Math.min(maxHp(W, m), m.hp + it.amt); if (m === al.mon) await this.hpTo(m, false, to); else m.hp = to; await this.msg(`${monName(W, m)} recovered HP!`); }
+    if (it.kind === 'heal') { audio.sfx('heal'); const cured = !!m.status; delete m.status; const to = Math.min(maxHp(W, m), m.hp + it.amt); if (m === al.mon) await this.hpTo(m, false, to); else m.hp = to; await this.msg(`${monName(W, m)} recovered HP${cured ? ' and feels better' : ''}!`); }
     if (it.kind === 'revive') { m.hp = Math.floor(maxHp(W, m) / 2); audio.sfx('heal'); await this.msg(`${monName(W, m)} was revived!`); }
-    if (it.kind === 'level') { await this.levelEvents(m, gainXp(W, m, Math.max(1, xpToNext(m.lvl) - m.xp))); }
   }
   async capture(al, k, cubeId) {
     const W = G.W; const e = this.enemy; const sp = W.species[e.mon.sp]; G.save.bag[cubeId]--;
@@ -324,7 +391,7 @@ const effTag = (e) => (e > 1 ? '<span class="eff up">▲ Super</span>' : e < 1 ?
 function itemIconSafe(id) { try { return G.icons(id); } catch { return ''; } }
 export function monRow(W, m) {
   const sp = W.species[m.sp]; const mh = maxHp(W, m); const pct = clamp(m.hp / mh, 0, 1) * 100;
-  return `<img class="mini" src="${G.mini(sp)}"><span class="mrn">${esc(monName(W, m))}</span><span class="lv">Lv${m.lvl}</span><span class="type t-${sp.type}">${TYPES[sp.type].name}</span><span class="minihp"><i class="${pct > 50 ? 'g' : pct > 20 ? 'y' : 'r'}" style="width:${pct}%"></i></span><span class="hpn">${Math.ceil(m.hp)}/${mh}</span>`;
+  return `<img class="mini" src="${G.mini(sp)}"><span class="mrn">${esc(monName(W, m))}</span><span class="lv">Lv${m.lvl}</span><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}<span class="minihp"><i class="${pct > 50 ? 'g' : pct > 20 ? 'y' : 'r'}" style="width:${pct}%"></i></span><span class="hpn">${Math.ceil(m.hp)}/${mh}</span>`;
 }
 export async function evolveScene(scene, m, to) {
   const W = G.W; const from = W.species[m.sp], dest = W.species[to];

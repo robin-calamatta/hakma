@@ -50,8 +50,15 @@ document.querySelectorAll('#touch [data-b]').forEach((b) => {
 });
 // d-pad: slide between directions
 const pad = document.getElementById('dpad');
-if (pad) { const dirs = ['up', 'down', 'left', 'right']; const setDir = (e) => { const r = pad.getBoundingClientRect(); const x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2; for (const d of dirs) input.setTouch(d, false); if (Math.hypot(x, y) < 8) return; input.setTouch(Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : y > 0 ? 'down' : 'up', true); };
-  pad.addEventListener('pointerdown', (e) => { if (editingControls()) return; e.preventDefault(); audio.init(); pad.setPointerCapture(e.pointerId); setDir(e); }); pad.addEventListener('pointermove', (e) => { if (e.buttons && !editingControls()) setDir(e); }); const end = () => dirs.forEach((d) => input.setTouch(d, false)); pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end); }
+// Movement control: thumbstick (default, knob follows your thumb) or classic d-pad — switch in Settings.
+export function applyPadStyle() { if (!pad) return; const stick = G.settings?.padStyle !== 'dpad'; pad.classList.toggle('stick', stick); pad.classList.toggle('cross-pad', !stick); }
+if (pad) { const dirs = ['up', 'down', 'left', 'right']; const knob = pad.querySelector('.knob');
+  const setDir = (e) => { const r = pad.getBoundingClientRect(); let x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2; const lim = r.width * 0.32, len = Math.hypot(x, y);
+    if (knob) { const k = len > lim ? lim / len : 1; knob.style.transform = `translate(calc(-50% + ${x * k}px), calc(-50% + ${y * k}px))`; }
+    let d = null; if (len >= r.width * 0.12) d = Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : y > 0 ? 'down' : 'up';
+    for (const q of dirs) { input.setTouch(q, q === d); pad.classList.toggle('p' + q[0], q === d); } };
+  pad.addEventListener('pointerdown', (e) => { if (editingControls()) return; e.preventDefault(); audio.init(); pad.setPointerCapture(e.pointerId); setDir(e); }); pad.addEventListener('pointermove', (e) => { if (e.buttons && !editingControls()) setDir(e); }); const end = () => { dirs.forEach((d) => { input.setTouch(d, false); pad.classList.remove('p' + d[0]); }); if (knob) knob.style.transform = ''; }; pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end); }
+applyPadStyle(); G.applyPadStyle = applyPadStyle;
 const unlock = () => audio.init(); addEventListener('keydown', unlock); addEventListener('pointerdown', unlock);
 input.onRunToggle = (p, on) => { audio.sfx(on ? 'select' : 'back'); ui.toast(on ? '🏃 Auto-run ON (double-tap Run to turn off)' : '🚶 Auto-run OFF', 1600); document.querySelector('#touch [data-b="run"]')?.classList.toggle('on', input.runLock[0]); };
 addEventListener('gamepadconnected', (e) => ui.toast(`🎮 Controller ${e.gamepad.index + 1} connected`));
