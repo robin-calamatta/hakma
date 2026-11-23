@@ -1,0 +1,221 @@
+// Start menu and all sub-screens.
+import { G, ITEMS, stats, maxHp, movesOf, monName, xpToNext, gainXp, healMon, newPlayer, makeMon, addMon, badgeCount, chapter, writeSlot, saveSettings, recordAnswer, addCodex } from './state.js';
+import { ui, fmt } from './ui.js';
+import { audio } from '../core/audio.js';
+import { input } from '../core/input.js';
+import { esc, clamp, R, sleep } from '../core/rng.js';
+import { TYPES, beats, weakTo } from '../content/types.js';
+import { questList, objective } from './events.js';
+import { monRow, evolveScene } from './battle.js';
+import { checkEvolve, evolve } from './state.js';
+import { itemIcon } from '../core/sprites.js';
+import { CONFIG } from '../config.js';
+
+const S = () => G.save, W = () => G.W;
+
+export async function mainMenu(pi = 0) {
+  G.busy++;
+  for (;;) {
+    const online = G.net?.online;
+    let items = [
+      ['team', '◈ Team'], ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['mastery', '▲ Mastery'],
+      ['friends', `👥 Friends & Co-op${online ? ' <i class="dot on"></i>' : ''}`], ['players', '🎮 Local Players'], ['save', '💾 Save'], ['settings', '⚙ Settings'], ['help', '? Help & Legal'], ['title', '⏏ Title Screen'],
+    ];
+    if (!CONFIG.ONLINE) items = items.filter(([k]) => k !== 'friends');
+    const c = await ui.choose(`${S().players[pi]?.name || ''} · ¤${S().money} · Badges ${badgeCount(S())}/8 — ${objective()}`, items.map(([, h]) => ({ html: h })), { cls: 'mainmenu', start: G.menuIdx || 0, cols: 2 });
+    if (c < 0) break; G.menuIdx = c; const k = items[c][0];
+    if (k === 'team') await team(pi); if (k === 'dex') await dex(); if (k === 'bag') await bag(pi); if (k === 'codex') await codex(); if (k === 'quests') await quests(); if (k === 'mastery') await mastery();
+    if (k === 'friends') await G.netui.friends(); if (k === 'players') await players(); if (k === 'settings') await settings(); if (k === 'help') await help();
+    if (k === 'save') { G.autosave(true); ui.toast('Game saved' + (CONFIG.ONLINE && G.net?.authed ? ' · synced to cloud' : '')); }
+    if (k === 'title') { if (await ui.confirm('Save and return to the title screen?')) { G.autosave(true); ui.closeAll(); G.busy = 0; G.toTitle(); return; } }
+  }
+  G.busy--;
+}
+
+// ------------------------------------------------------------ team & summary
+export async function team(pi = 0) {
+  let p = pi;
+  await ui.panel({ title: 'Team', wide: true, onLR: S().players.length > 1 ? (d, rr) => { p = (p + d + S().players.length) % S().players.length; rr(); } : null,
+    render: () => { const P = S().players[p]; return `${S().players.length > 1 ? `<div class="tabs">${S().players.map((q, k) => `<button data-nav data-act="pl" data-arg="${k}" class="${k === p ? 'on' : ''}" style="border-color:${q.color}">P${k + 1} ${esc(q.name)}</button>`).join('')}</div>` : ''}
+      <div class="mlist">${P.party.map((m, k) => `<button data-nav data-act="mon" data-arg="${k}" class="mrow">${monRow(W(), m)}</button>`).join('') || '<p>No monsters yet.</p>'}</div><p class="dim">Select a monster for details, item use, nicknames and order. Your first healthy monster leads in battle.</p>`; },
+    actions: { pl: (k) => { p = +k; }, mon: async (k) => { await monMenu(p, +k); } } });
+}
+async function monMenu(p, k) {
+  const P = S().players[p]; const m = P.party[k]; if (!m) return;
+  const c = await ui.choose(`${monName(W(), m)} — Lv ${m.lvl}`, ['Summary', 'Move to front', 'Give nickname', 'Use item', 'Back']);
+  if (c === 0) await summary(m);
+  if (c === 1) { P.party.splice(k, 1); P.party.unshift(m); }
+  if (c === 2) { const n = await ui.prompt('Nickname (blank to reset)', m.nick || '', 12); m.nick = n && n !== W().species[m.sp].name ? n : null; }
+  if (c === 3) await useItemOn(p, m);
+}
+export async function summary(m, readonly) {
+  const w = W(); const sp = w.species[m.sp]; const st = stats(w, m); const mv = movesOf(w, m); const all = sp.moves;
+  const line = w.lines[sp.li]; const term = w.terms.find((t) => t.id === sp.termId) || w.terms.find((t) => t.term.toLowerCase() === sp.concept.toLowerCase());
+  await ui.panel({ title: esc(monName(w, m)), wide: true, cls: 'summary', render: () => `<div class="pv"><img class="big" src="${G.mini(sp)}"><div>
+    <h3>${esc(sp.name)} <span class="lv">Lv${m.lvl}</span></h3><p><span class="type t-${sp.type}">${TYPES[sp.type].name}</span> <span class="dim">Stage ${sp.stage + 1}/${sp.stages}${sp.evolveAt ? ` · evolves at Lv ${sp.evolveAt}` : ''}</span></p>
+    <p>Embodies: <b>${esc(sp.concept)}</b>${term ? `<br><span class="dim">${esc(term.def)}</span>` : sp.dex ? `<br><span class="dim">${esc(sp.dex)}</span>` : ''}</p>${term ? `<p class="dim">Chapter ${term.ci + 1}: ${esc(w.cities[term.ci].theme)}</p>` : ''}
+    <p class="dim">Strong vs ${TYPES[beats(sp.type)].name} · Weak vs ${TYPES[weakTo(sp.type)].name} · Line: ${line.names.map(esc).join(' → ')}</p>
+    <div class="stats"><span>HP ${Math.ceil(m.hp)}/${st.hp}</span><span>ATK ${st.atk}</span><span>DEF ${st.def}</span><span>SPD ${st.spd}</span></div>
+    <div class="xpbar"><i style="width:${(m.xp / xpToNext(m.lvl)) * 100}%"></i></div><p class="dim">XP ${m.xp}/${xpToNext(m.lvl)}</p>
+    <div class="moves">${all.map((x) => `<div class="mv ${x.lvl > m.lvl ? 'locked' : ''}"><b>${esc(x.name)}</b> <span class="type t-${x.type}">${x.kind === 'boost' ? 'Boost' : TYPES[x.type].name + ' ' + x.power}</span>${x.lvl > m.lvl ? ` <small>Lv ${x.lvl}</small>` : ''}</div>`).join('')}</div>
+    </div></div><button data-nav data-act="__close">Close</button>` });
+  void mv; void readonly;
+}
+
+// ------------------------------------------------------------ dex
+export async function dex() {
+  const w = W(); const ids = Object.keys(w.species);
+  await ui.panel({ title: `Dex — ${Object.keys(S().caught).length} caught · ${Object.keys(S().seen).length} seen · ${ids.length} total`, wide: true, cols: 6, cls: 'dexp',
+    render: () => `<div class="dexgrid">${ids.map((id, n) => { const sp = w.species[id]; const seen = S().seen[id], caught = S().caught[id];
+      return `<button data-nav data-act="sp" data-arg="${id}" class="dexc ${caught ? 'c' : seen ? 's' : 'u'}"><img src="${seen ? G.mini(sp) : G.mini(sp)}" class="${seen ? '' : 'shadow'}"><small>#${String(n + 1).padStart(3, '0')}</small><span>${seen ? esc(sp.name) : '???'}</span></button>`; }).join('')}</div>`,
+    actions: { sp: async (id) => { if (!S().seen[id]) { ui.toast('Not yet encountered.'); return; } const fake = makeMon(w, id, 1); await summary(fake, true); } } });
+}
+
+// ------------------------------------------------------------ bag & items
+export async function bag(pi = 0) {
+  await ui.panel({ title: `Bag · ¤${S().money}`, render: () => { const ids = Object.keys(S().bag).filter((id) => S().bag[id] > 0 && ITEMS[id]);
+    return ids.length ? `<div class="ilist">${ids.map((id) => `<button data-nav data-act="use" data-arg="${id}" class="irow"><img class="ico" src="${itemIcon(id)}"><b>${ITEMS[id].name}</b><span class="cnt">×${S().bag[id]}</span><small>${ITEMS[id].desc}</small></button>`).join('')}</div>` : '<p>Empty.</p>'; },
+    actions: { use: async (id) => { const it = ITEMS[id]; if (it.kind === 'cube') { ui.toast('Use cubes during wild battles.'); return; } let p = pi; if (S().players.length > 1) { const c = await ui.choose('Whose team?', S().players.map((q) => q.name)); if (c < 0) return; p = c; } await itemTarget(p, id); } } });
+}
+async function useItemOn(p, m) {
+  const ids = Object.keys(S().bag).filter((id) => S().bag[id] > 0 && ITEMS[id] && ITEMS[id].kind !== 'cube');
+  if (!ids.length) { ui.toast('No usable items.'); return; }
+  const c = await ui.choose('Use which item?', ids.map((id) => `${ITEMS[id].name} ×${S().bag[id]}`)); if (c < 0) return;
+  await applyItem(ids[c], m);
+}
+async function itemTarget(p, id) {
+  const P = S().players[p]; const c = await ui.choose(`Use ${ITEMS[id].name} on?`, P.party.map((m) => ({ html: monRow(W(), m) })), { cls: 'teamlist' }); if (c < 0) return;
+  await applyItem(id, P.party[c]);
+}
+async function applyItem(id, m) {
+  const it = ITEMS[id], w = W(); const nm = monName(w, m);
+  if (it.kind === 'heal') { if (m.hp <= 0 || m.hp >= maxHp(w, m)) { ui.toast('It would have no effect.'); return; } m.hp = Math.min(maxHp(w, m), m.hp + it.amt); S().bag[id]--; audio.sfx('heal'); ui.toast(`${nm} recovered HP!`); }
+  if (it.kind === 'revive') { if (m.hp > 0) { ui.toast('It would have no effect.'); return; } m.hp = Math.floor(maxHp(w, m) / 2); S().bag[id]--; audio.sfx('heal'); ui.toast(`${nm} was revived!`); }
+  if (it.kind === 'level') {
+    if (m.lvl >= 100) return; S().bag[id]--; const ev = gainXp(w, m, xpToNext(m.lvl) - m.xp); audio.sfx('levelup'); ui.toast(`${nm} grew to Lv ${m.lvl}!`);
+    for (const e of ev) if (e.type === 'move') ui.toast(`${nm} learned ${e.move}!`);
+    const to = checkEvolve(w, m); if (to) { ui.closeAll(); const prev = G.scene; await evolveScene(null, m, to); G.scene = prev; document.getElementById('hud').innerHTML = ''; document.getElementById('hud').className = ''; G.world.load(S().map, S().pos); }
+  }
+}
+
+// ------------------------------------------------------------ codex & drills
+export async function codex() {
+  const w = W(); const reach = Math.max(chapter(S()), ...Object.keys(S().flags).filter((k) => k.startsWith('visit')).map((k) => +k.slice(5)));
+  let ci = Math.min(reach, 7);
+  await ui.panel({ title: 'Codex — your study notes', wide: true, cls: 'codexp', onLR: (d, rr) => { ci = clamp(ci + d, 0, reach); rr(); },
+    render: () => { const c = w.cities[ci]; const learned = c.terms.filter((t) => S().codex[t.id]).length;
+      return `<div class="tabs">${w.cities.slice(0, reach + 1).map((x, k) => `<button data-nav data-act="city" data-arg="${k}" class="${k === ci ? 'on' : ''}">${k + 1}</button>`).join('')}</div>
+      <h3>${esc(c.name)} — ${esc(c.theme)} <span class="dim">(${learned}/${c.terms.length} learned)</span></h3>
+      <div class="row"><button data-nav data-act="drill" data-arg="${ci}">▶ Drill this chapter</button><button data-nav data-act="interview">🎤 Mock interview</button><button data-nav data-act="review">↺ Review missed (${S().missed.length})</button></div>
+      <div class="terms">${c.terms.map((t) => `<div class="term ${S().codex[t.id] ? 'got' : ''}"><b>${S().codex[t.id] ? '✔ ' : ''}${esc(t.term)}</b><span>${esc(t.def)}</span></div>`).join('')}
+      ${(c.pool || []).filter((q) => !q.term).slice(0, 40).map((q) => `<div class="term qa"><b>Q: ${esc(q.q)}</b><span>A: ${esc(q.a)} — <i>${esc(q.expl)}</i></span></div>`).join('')}</div>`; },
+    actions: { city: (k) => { ci = +k; }, drill: async (k) => { await drill(`${w.cities[+k].name} drill`, () => w.pickQ(+k, S(), { mix: false, review: 0.15 }), 10); }, interview: async () => { await drill('Mock interview', () => w.pickQ(reach >= 7 && S().champion ? 'final' : reach, S(), { review: 0.3 }), 15, true); }, review: async () => { await reviewDrill(); } } });
+}
+export async function reviewDrill() {
+  const w = W(); const ids = S().missed.filter((id) => w.qIndex[id]); if (!ids.length) { await ui.say('No missed questions to review. Nice!'); return; }
+  const pool = [...ids].sort(() => R() - 0.5).slice(0, 10);
+  let k = 0; await drill('Review: missed questions', () => { const Q = w.qIndex[pool[k++ % pool.length]]; const opts = [Q.a, ...Q.wrong].sort(() => R() - 0.5); return { id: Q.id, q: Q.q, opts, answer: opts.indexOf(Q.a), expl: Q.expl, ci: Q.ci, a: Q.a, review: true }; }, pool.length);
+}
+export async function drill(title, gen, n, interview) {
+  let score = 0, quick = 0;
+  for (let i = 0; i < n; i++) {
+    const q = gen(); const r = await ui.question(q, { tag: `${title} · ${i + 1}/${n}`, cls: interview ? 'interview' : '' });
+    if (!r) break; recordAnswer(S(), q, r.correct, r.quick); if (r.correct) score++; if (r.quick) quick++;
+  }
+  const pct = Math.round((score / n) * 100); const reward = score * 15;
+  S().money += reward; G.autosave();
+  await ui.say([`${title} complete: *${score}/${n}* (${pct}%), ${quick} quick recalls.`, reward ? `Study credits earned: ¤${reward}.` : '', pct >= 80 ? 'Excellent — you\'re really getting this!' : pct >= 50 ? 'Solid progress. Missed questions will come back for review.' : 'Keep at it — read the explanations and drill again.']);
+}
+
+// ------------------------------------------------------------ quests & mastery
+export async function quests() {
+  await ui.panel({ title: 'Quest Log', wide: true, render: () => `<div class="qlist">${questList().map((q) => `<div class="quest ${q.done ? 'done' : ''} ${q.main ? 'main' : ''}"><b>${q.done ? '✔' : q.ready ? '!' : '○'} ${esc(q.title)}</b><span>${fmt(esc(q.desc))}${q.ready ? ' <b class="ok">Ready to turn in!</b>' : ''}</span></div>`).join('')}</div>` });
+}
+export function readiness() {
+  const s = S(); let tot = 0, n = 0;
+  for (let i = 0; i < 8; i++) { const pc = s.stats.perCity[i]; const acc = pc && pc.a ? pc.c / pc.a : 0; const cov = Math.min(1, (pc?.a || 0) / 25); tot += acc * cov; n++; }
+  return Math.round((tot / n) * 100);
+}
+export async function mastery() {
+  const s = S(), w = W(); const st = s.stats; const acc = st.answered ? Math.round((st.correct / st.answered) * 100) : 0;
+  await ui.panel({ title: 'Mastery', wide: true, render: () => `<div class="mast"><div class="big3"><div><b>${st.answered}</b><small>answered</small></div><div><b>${acc}%</b><small>accuracy</small></div><div><b>${st.quick}</b><small>quick recalls</small></div><div><b>${readiness()}%</b><small>readiness</small></div></div>
+    ${w.cities.map((c, i) => { const pc = st.perCity[i] || { a: 0, c: 0 }; const a = pc.a ? Math.round((pc.c / pc.a) * 100) : 0; const learned = c.terms.filter((t) => s.codex[t.id]).length;
+      return `<div class="mrow2"><span class="mc">${s.badges[i] ? '🏅' : '·'} ${esc(c.name)}</span><span class="mt">${esc(c.theme)}</span><span class="bar"><i style="width:${a}%"></i></span><span class="pct">${pc.a ? a + '%' : '—'}</span><span class="dim">${learned}/${c.terms.length} notes</span></div>`; }).join('')}
+    <p class="dim">Readiness blends accuracy and how much of each chapter you've practised. Aim for 80%+ across all eight before your interview or exam. Playtime: ${Math.floor(s.playtime / 3600)}h ${Math.floor((s.playtime % 3600) / 60)}m.</p></div>` });
+}
+
+// ------------------------------------------------------------ local co-op
+export async function players() {
+  await ui.panel({ title: 'Local Players (same screen)', wide: true, render: () => `<div class="plist">${S().players.map((p, k) => `<div class="prow"><span class="sw" style="background:${p.color}"></span><b>P${k + 1} ${esc(p.name)}</b><span class="dim">${p.party.length} in team · ${p.box.length} in box</span>${k > 0 ? `<button data-nav data-act="rm" data-arg="${k}">Remove</button>` : ''}</div>`).join('')}</div>
+    ${S().players.length < 4 ? '<button data-nav data-act="add">+ Add a local player</button>' : ''}
+    <div class="ctrl"><h4>Controls</h4><p><b>1 player:</b> Arrows/WASD move · Z/Space/Enter = A · X/Esc = B (hold to run) · Tab/M = Menu</p><p><b>2+ players:</b> P1 WASD + F (A) / G (B) / Tab (menu) · P2 Arrows + . (A) / , (B) / / (menu) · P3 &amp; P4 use gamepads (each new pad joins the next slot). Touch controls drive P1.</p><p>Everyone shares one screen and travels together. In battle, every player's lead monster fights side by side and each player answers their own questions.</p></div>`,
+    actions: { add: async () => { await addLocal(); }, rm: async (k) => { if (await ui.confirm(`Remove P${+k + 1} ${S().players[+k].name}? Their monsters will be lost.`)) { S().players.splice(+k, 1); S().players.forEach((p, i) => { p.color = ['#e04848', '#3a7ae0', '#30b060', '#e0a020'][i]; }); input.setPlayers(S().players.length); G.world.load(S().map, S().pos); } } } });
+}
+async function addLocal() {
+  const k = S().players.length; const name = await ui.prompt(`Name for Player ${k + 1}`, 'Player ' + (k + 1));
+  const p = newPlayer(name, k); S().players.push(p); input.setPlayers(S().players.length); input.assignPad(k, k);
+  S().pos.push({ ...S().pos[0] });
+  if (S().flags.starter) {
+    const w = W(); const lead = S().players[0].party[0]; const lvl = Math.max(5, (lead?.lvl || 5) - 3);
+    const c = await ui.choose(`${name}, choose your partner!`, w.starters.map((id) => ({ html: `<img class="mini" src="${G.mini(w.species[id])}"> ${esc(w.species[id].name)} <span class="type t-${w.species[id].type}">${TYPES[w.species[id].type].name}</span>` })), { cancel: false, cls: 'teamlist' });
+    const mon = makeMon(w, w.speciesFor(w.species[w.starters[c]].li, lvl), lvl); addMon(S(), k, mon); S().caught[mon.sp] = 1; S().seen[mon.sp] = 1;
+  }
+  G.world.load(S().map, S().pos); ui.toast(`${name} joined!`);
+}
+
+// ------------------------------------------------------------ settings & help
+export async function settings() {
+  const st = G.settings; const keys = ['music', 'sfx', 'timer', 'timerSec', 'textSpeed', 'full'];
+  const lbl = { music: 'Music volume', sfx: 'Sound volume', timer: 'Question timer', timerSec: 'Timer length', textSpeed: 'Text speed', full: 'Fullscreen' };
+  const val = (k) => k === 'music' || k === 'sfx' ? '▮'.repeat(Math.round(st[k] * 10)) + '▯'.repeat(10 - Math.round(st[k] * 10)) : k === 'timer' ? (st.timer ? 'On' : 'Off (relaxed)') : k === 'timerSec' ? st.timerSec + 's' : k === 'textSpeed' ? ['', 'Slow', 'Normal', 'Fast', 'Instant'][st.textSpeed] : document.fullscreenElement ? 'On' : 'Off';
+  const change = (k, d) => {
+    if (k === 'music' || k === 'sfx') { st[k] = clamp(Math.round((st[k] + d * 0.1) * 10) / 10, 0, 1); audio.setVolume(k, st[k]); }
+    if (k === 'timer') st.timer = !st.timer; if (k === 'timerSec') st.timerSec = clamp(st.timerSec + d * 5, 10, 60); if (k === 'textSpeed') st.textSpeed = clamp(st.textSpeed + d, 1, 4);
+    if (k === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
+    saveSettings(st); audio.sfx('blip');
+  };
+  let cur = 0;
+  await ui.panel({ title: 'Settings', onLR: (d, rr) => { const l = ui.stack[ui.stack.length - 1]; cur = l.idx; if (keys[cur]) change(keys[cur], d); rr(); },
+    render: () => `<div class="slist">${keys.map((k, i) => `<button data-nav data-act="t" data-arg="${k}" class="srow"><span>${lbl[k]}</span><b>◀ ${val(k)} ▶</b></button>`).join('')}</div><p class="dim">Left/right to change. Turn the timer off for a relaxed, accessible pace — you can still earn Quick Recall bonuses.</p>`,
+    actions: { t: (k) => change(k, 1) } });
+}
+export async function help() {
+  await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p>
+    <p>Each city teaches one chapter of your topic. Talk to everyone (tips go into your Codex), pass the Study Lab Trial, then beat the Mastery Hall Leader for a badge. Badges open the road north. Eight badges lead to the Mastery Summit.</p>
+    <h4>Types</h4><p>Logic ▶ Cipher ▶ Spark ▶ Data ▶ Structure ▶ Flux ▶ Logic. Super-effective hits do double damage.</p>
+    <h4>Legal</h4><p>Hakma is an original work. All monsters, characters, music and art are generated by the game itself. Educational content is provided as-is for learning; always verify safety-critical information (e.g. electrical work) against official codes and licensed professionals.</p>
+    <div class="row"><a data-nav class="btn" href="legal/eula.html" target="_blank">EULA</a><a data-nav class="btn" href="legal/privacy.html" target="_blank">Privacy Policy</a><a data-nav class="btn" href="legal/terms.html" target="_blank">Terms of Service</a><a data-nav class="btn" href="legal/credits.html" target="_blank">Credits &amp; Licenses</a></div>
+    <p class="dim">Version ${G.version}</p></div>` });
+}
+
+// ------------------------------------------------------------ archive box & shop
+export async function archive() {
+  let p = 0;
+  await ui.panel({ title: 'Archive Box Terminal', wide: true, cls: 'archive', onLR: S().players.length > 1 ? (d, rr) => { p = (p + d + S().players.length) % S().players.length; rr(); } : null,
+    render: () => { const P = S().players[p]; return `${S().players.length > 1 ? `<p>Player: <b>P${p + 1} ${esc(P.name)}</b> (◀ ▶ to switch)</p>` : ''}<div class="cols"><div><h4>Team (${P.party.length}/6)</h4>${P.party.map((m, k) => `<button data-nav data-act="dep" data-arg="${k}" class="mrow">${monRow(W(), m)}</button>`).join('')}</div>
+      <div><h4>Box (${P.box.length})</h4>${P.box.map((m, k) => `<button data-nav data-act="wd" data-arg="${k}" class="mrow">${monRow(W(), m)}</button>`).join('') || '<p class="dim">Empty</p>'}</div></div><p class="dim">Select a team monster to store it, or a boxed monster to bring it along. Boxed monsters are healed automatically.</p>`; },
+    actions: {
+      dep: (k) => { const P = S().players[p]; if (P.party.length <= 1) { ui.toast('You must keep at least one monster.'); return; } const [m] = P.party.splice(+k, 1); healMon(W(), m); P.box.push(m); audio.sfx('door'); },
+      wd: (k) => { const P = S().players[p]; if (P.party.length >= 6) { ui.toast('Your team is full.'); return; } const [m] = P.box.splice(+k, 1); healMon(W(), m); P.party.push(m); audio.sfx('door'); },
+    } });
+}
+export async function shop() {
+  const b = badgeCount(S()); const stock = Object.keys(ITEMS).filter((id) => ITEMS[id].price > 0 && (ITEMS[id].badge || 0) <= b);
+  await ui.panel({ title: 'Supply Depot', render: () => `<p>Credits: <b>¤${S().money}</b></p><div class="ilist">${stock.map((id) => `<button data-nav data-act="buy" data-arg="${id}" class="irow"><img class="ico" src="${itemIcon(id)}"><b>${ITEMS[id].name}</b><span class="cnt">¤${ITEMS[id].price}</span><small>${ITEMS[id].desc} (have ${S().bag[id] || 0})</small></button>`).join('')}</div><p class="dim">New stock arrives as you earn badges.</p>`,
+    actions: { buy: async (id) => { const it = ITEMS[id]; const max = Math.floor(S().money / it.price); if (!max) { ui.toast('Not enough credits.'); return; } const qs = [1, 5, 10].filter((q) => q <= max); const c = await ui.choose(`Buy how many ${it.name}?`, qs.map((q) => `${q} — ¤${q * it.price}`)); if (c < 0) return; const q = qs[c]; S().money -= q * it.price; S().bag[id] = (S().bag[id] || 0) + q; audio.sfx('buy'); ui.toast(`Bought ${q}× ${it.name}`); } } });
+}
+
+// ------------------------------------------------------------ ceremonies
+export async function badgeCeremony(i) {
+  const c = W().cities[i]; const col = TYPES[c.type].color;
+  await ui.panel({ title: 'Badge earned!', cls: 'badgecer', render: () => `<div class="badgeshow"><div class="badge-ico" style="--c:${col}"><span>${TYPES[c.type].icon}</span></div><h3>${esc(c.badge)}</h3><p>${esc(c.theme)}</p><p class="dim">${S().badges.filter(Boolean).length}/8 badges</p><div class="badgerow">${W().cities.map((x, k) => `<span class="mini-badge ${S().badges[k] ? 'on' : ''}" style="--c:${TYPES[x.type].color}"></span>`).join('')}</div><button data-nav data-act="__close">Continue</button></div>` });
+}
+export async function ending() {
+  const s = S(), w = W(); const acc = s.stats.answered ? Math.round((s.stats.correct / s.stats.answered) * 100) : 0; const date = new Date().toLocaleDateString();
+  audio.play('ending', w.id, 'title');
+  const cert = `<div class="cert"><div class="cbrd"><h2>HAKMA</h2><h3>Certificate of Mastery</h3><p>This certifies that</p><h1>${esc(s.players.map((p) => p.name).join(' & '))}</h1><p>has conquered all eight Mastery Halls and the Summit of</p><h2 class="topic">${esc(w.topic.name)}</h2><p>${s.stats.answered} questions answered · ${acc}% accuracy · ${s.stats.quick} quick recalls · readiness ${readiness()}%</p><p class="dim">${esc(date)} · ${esc(w.region)}</p></div></div>`;
+  await ui.panel({ title: 'Congratulations, Master!', wide: true, cls: 'certp', render: () => `${cert}<div class="row"><button data-nav data-act="print">🖨 Print / Save PDF</button><button data-nav data-act="__close">Roll credits</button></div>`,
+    actions: { print: () => { const wnd = window.open('', '_blank'); if (!wnd) return; wnd.document.write(`<html><head><title>Hakma Certificate</title><link rel="stylesheet" href="${location.origin}${location.pathname.replace(/[^/]*$/, '')}css/style.css"></head><body class="printcert">${cert}<script>setTimeout(()=>print(),400)<\/script></body></html>`); wnd.document.close(); } } });
+  const credits = ['HAKMA', '', `Master of ${w.topic.name}`, '', 'Design, code, music & art', 'generated by the Hakma engine', '', 'Created for Robin Calamatta', '', 'Topics: ' + G.topicsCount + ' fields of study', '', 'Fonts: Press Start 2P & VT323 (SIL Open Font License)', '', 'Thank you for learning with us.', '', 'Keep drilling the Codex — mastery is a habit.'];
+  await ui.panel({ title: 'Credits', cls: 'credits', render: () => `<div class="roll">${credits.map((l) => `<p>${esc(l)}</p>`).join('')}</div><button data-nav data-act="__close">Continue your journey</button>` });
+}
