@@ -77,7 +77,10 @@ export function healAll(W, save) { for (const p of save.players) { for (const m 
 export function addMon(save, pi, mon) {
   const p = save.players[pi] || save.players[0];
   if (p.party.length < 6) { p.party.push(mon); return 'party'; }
-  p.box.push(mon); return 'box';
+  mon.boxN = boxWithRoom(p); p.box.push(mon); return 'box';
+}
+export const BOX_COUNT = 8, BOX_SIZE = 30;
+export function boxWithRoom(p, from = 0) { for (let k = 0; k < BOX_COUNT; k++) { const b = (from + k) % BOX_COUNT; if (p.box.filter((m) => (m.boxN || 0) === b).length < BOX_SIZE) return b; } return from;
 }
 // returns list of events: {type:'level', lvl} / {type:'move', move} / {type:'evolve', to}
 export function gainXp(W, m, amount) {
@@ -134,7 +137,7 @@ export function migrate(save) {
   if (!save.seed) save.seed = 'legacy'; // saves from before randomized worlds keep their original map
   save.skills = save.skills || {}; save.cleared = save.cleared || {};
   for (const k in FIELD_SKILLS) if (save.badges?.[FIELD_SKILLS[k].badge]) save.skills[k] = true; // earned before skills existed
-  save.players.forEach((p, i) => { p.color = p.color || PLAYER_COLORS[i]; p.box = p.box || []; });
+  save.players.forEach((p, i) => { p.color = p.color || PLAYER_COLORS[i]; p.box = p.box || []; p.box.forEach((m, k) => { if (m.boxN === undefined) m.boxN = Math.min(7, Math.floor(k / 30)); }); });
   save.pos = save.pos || [{ x: 5, y: 4, dir: 'down' }];
   if (save.follower === undefined) save.follower = save.players[0]?.party[0]?.uid || undefined; // partner walks behind you by default
   while (save.pos.length < save.players.length) save.pos.push({ ...save.pos[0] });

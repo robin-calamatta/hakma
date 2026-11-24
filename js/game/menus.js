@@ -11,7 +11,7 @@ import { esc, clamp, R, sleep } from '../core/rng.js';
 import { TYPES, beats, weakTo, typeCycleText } from '../content/types.js';
 import { questList, objective } from './events.js';
 import { monRow, evolveScene } from './battle.js';
-import { checkEvolve, evolve, FIELD_SKILLS, tmMove } from './state.js';
+import { checkEvolve, evolve, FIELD_SKILLS, tmMove, BOX_COUNT, BOX_SIZE } from './state.js';
 import { BIOMES } from '../core/sprites.js';
 import { biomeOf, worldSeed, getMap, routeLayout, LAIR_ROUTE, zoneInfo , LINKS } from './maps.js';
 import { learnMore, externalOn } from './learn.js';
@@ -55,13 +55,15 @@ export async function team(pi = 0) {
 async function monMenu(p, k) {
   const P = S().players[p]; const m = P.party[k]; if (!m) return;
   const walking = p === 0 && S().follower === m.uid;
-  const opts = ['Summary', 'Move to front', 'Give nickname', 'Use item', ...(p === 0 ? [walking ? '🐾 Stop walking with me' : '🐾 Walk with me'] : []), 'Back'];
-  const c = await ui.choose(`${monName(W(), m)} — Lv ${m.lvl}`, opts);
+  const opts = ['Summary', '🔀 Swap position with…', '⬆ Move up', '⬇ Move down', 'Give nickname', 'Use item', ...(p === 0 ? [walking ? '🐾 Stop walking with me' : '🐾 Walk with me'] : []), 'Back'];
+  const c = await ui.choose(`${monName(W(), m)} — Lv ${m.lvl} (slot ${k + 1})`, opts);
+  const swap = (a2, b2) => { if (b2 < 0 || b2 >= P.party.length) return; [P.party[a2], P.party[b2]] = [P.party[b2], P.party[a2]]; audio.sfx('select'); };
+  if (c === 1) { const t = await ui.choose(`Swap ${monName(W(), m)} with…`, P.party.map((q, j) => ({ html: monRow(W(), q), disabled: j === k })), { cls: 'teamlist' }); if (t >= 0) swap(k, t); return; }
+  if (c === 2) { swap(k, k - 1); return; } if (c === 3) { swap(k, k + 1); return; }
+  if (c === 4) { const n = await ui.prompt('Nickname (blank to reset)', m.nick || '', 12); m.nick = n && n !== W().species[m.sp].name ? n : null; return; }
+  if (c === 5) { await useItemOn(p, m); return; }
   if (opts[c] && opts[c].startsWith('🐾')) { S().follower = walking ? null : m.uid; G.world?.initFollower(); if (!walking) G.world?.emote('♥'); ui.toast(walking ? `${monName(W(), m)} hops back into its capsule.` : `${monName(W(), m)} will walk with you!`); return; }
   if (c === 0) await summary(m);
-  if (c === 1) { P.party.splice(k, 1); P.party.unshift(m); }
-  if (c === 2) { const n = await ui.prompt('Nickname (blank to reset)', m.nick || '', 12); m.nick = n && n !== W().species[m.sp].name ? n : null; }
-  if (c === 3) await useItemOn(p, m);
 }
 export async function summary(m, readonly) {
   const w = W(); const sp = w.species[m.sp]; const st = stats(w, m); const mv = movesOf(w, m); const all = sp.moves.concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
@@ -385,13 +387,30 @@ export async function help() {
 
 // ------------------------------------------------------------ archive box & shop
 export async function archive() {
-  let p = 0;
-  await ui.panel({ title: 'Archive Box Terminal', wide: true, cls: 'archive', onLR: S().players.length > 1 ? (d, rr) => { p = (p + d + S().players.length) % S().players.length; rr(); } : null,
-    render: () => { const P = S().players[p]; return `${S().players.length > 1 ? `<p>Player: <b>P${p + 1} ${esc(P.name)}</b> (◀ ▶ to switch)</p>` : ''}<div class="cols"><div><h4>Team (${P.party.length}/6)</h4>${P.party.map((m, k) => `<button data-nav data-act="dep" data-arg="${k}" class="mrow">${monRow(W(), m)}</button>`).join('')}</div>
-      <div><h4>Box (${P.box.length})</h4>${P.box.map((m, k) => `<button data-nav data-act="wd" data-arg="${k}" class="mrow">${monRow(W(), m)}</button>`).join('') || '<p class="dim">Empty</p>'}</div></div><p class="dim">Select a team monster to store it, or a boxed monster to bring it along. Boxed monsters are healed automatically.</p>`; },
+  let p = 0, bx = 0; const P0 = () => S().players[p];
+  const inBox = (b) => P0().box.filter((m) => (m.boxN || 0) === b);
+  const cell = (m) => { const sp = W().species[m.sp]; return `<img class="mini" src="${G.mini(sp, lookOf(m))}"><span class="bn">${esc(monName(W(), m))}</span><span class="bl">Lv${m.lvl} <i class="type t-${sp.type}">${TYPES[sp.type].name}</i></span>`; };
+  const store = (m) => { const P = P0(); if (P.party.length <= 1) { ui.toast('You must keep at least one monster.'); return false; } if (inBox(bx).length >= BOX_SIZE) { ui.toast(`Box ${bx + 1} is full — use ◀ ▶ to pick another box.`); return false; }
+    P.party.splice(P.party.indexOf(m), 1); healMon(W(), m); m.boxN = bx; P.box.push(m); if (S().follower === m.uid) { S().follower = null; G.world?.initFollower(); } audio.sfx('door'); ui.toast(`${monName(W(), m)} was stored in Box ${bx + 1}.`); return true; };
+  const take = (m, swapWith) => { const P = P0(); P.box.splice(P.box.indexOf(m), 1); healMon(W(), m);
+    if (swapWith) { const k = P.party.indexOf(swapWith); P.party[k] = m; healMon(W(), swapWith); swapWith.boxN = bx; P.box.push(swapWith); if (S().follower === swapWith.uid) { S().follower = null; G.world?.initFollower(); } ui.toast(`${monName(W(), m)} swapped in for ${monName(W(), swapWith)}.`); }
+    else { P.party.push(m); ui.toast(`${monName(W(), m)} joined your team!`); } audio.sfx('door'); };
+  await ui.panel({ title: 'Archive Box Terminal', wide: true, cls: 'archive', onLR: (d, rr) => { bx = (bx + d + BOX_COUNT) % BOX_COUNT; audio.sfx('select'); rr(); },
+    render: () => { const P = P0(); const list = inBox(bx); return `${S().players.length > 1 ? `<div class="tabs">${S().players.map((q, k) => `<button data-nav data-act="pl" data-arg="${k}" class="${k === p ? 'on' : ''}" style="border-color:${q.color}">P${k + 1} ${esc(q.name)}</button>`).join('')}</div>` : ''}
+      <div class="cols"><div><h4>Team (${P.party.length}/6)</h4>${P.party.map((m, k) => `<button data-nav data-act="tm" data-arg="${k}" class="mrow">${monRow(W(), m)}</button>`).join('')}</div>
+      <div><div class="boxnav"><button data-nav data-act="bx" data-arg="-1">◀</button><h4>Box ${bx + 1} <small>(${list.length}/${BOX_SIZE})</small></h4><button data-nav data-act="bx" data-arg="1">▶</button></div>
+      <div class="boxgrid">${list.map((m) => `<button data-nav data-act="bm" data-arg="${P.box.indexOf(m)}" class="bcell">${cell(m)}</button>`).join('') || '<p class="dim">This box is empty.</p>'}</div></div></div>
+      <p class="dim">Pick a monster for options. ◀ ▶ (or the arrow buttons) flip between boxes. Stored monsters are healed automatically. All boxes hold ${P.box.length} monsters.</p>`; },
     actions: {
-      dep: (k) => { const P = S().players[p]; if (P.party.length <= 1) { ui.toast('You must keep at least one monster.'); return; } const [m] = P.party.splice(+k, 1); healMon(W(), m); P.box.push(m); audio.sfx('door'); },
-      wd: (k) => { const P = S().players[p]; if (P.party.length >= 6) { ui.toast('Your team is full.'); return; } const [m] = P.box.splice(+k, 1); healMon(W(), m); P.party.push(m); audio.sfx('door'); },
+      pl: (k) => { p = +k; },
+      bx: (d) => { bx = (bx + +d + BOX_COUNT) % BOX_COUNT; audio.sfx('select'); },
+      tm: async (k) => { const m = P0().party[+k]; if (!m) return; const c = await ui.choose(`${monName(W(), m)} · Lv ${m.lvl} ${TYPES[W().species[m.sp].type].name}`, [`📦 Store in Box ${bx + 1}`, 'Summary', 'Cancel']); if (c === 0) store(m); if (c === 1) await summary(m); },
+      bm: async (k) => { const P = P0(); const m = P.box[+k]; if (!m) return; const full = P.party.length >= 6;
+        const opts = [full ? '🔁 Swap with a team monster' : '➕ Add to team', '📦 Move to another box', 'Summary', 'Cancel'];
+        const c = await ui.choose(`${monName(W(), m)} · Lv ${m.lvl} ${TYPES[W().species[m.sp].type].name}`, opts);
+        if (c === 0) { if (!full) take(m); else { const t = await ui.choose(`Swap ${monName(W(), m)} with which team monster?`, P.party.map((q) => ({ html: monRow(W(), q) })), { cls: 'teamlist' }); if (t >= 0) take(m, P.party[t]); } }
+        if (c === 1) { const b = await ui.choose('Move to which box?', Array.from({ length: BOX_COUNT }, (_, q) => ({ label: `Box ${q + 1} (${inBox(q).length}/${BOX_SIZE})`, disabled: q === bx || inBox(q).length >= BOX_SIZE })), { cols: 2 }); if (b >= 0) { m.boxN = b; ui.toast(`Moved to Box ${b + 1}.`); } }
+        if (c === 2) await summary(m); },
     } });
 }
 export async function shop() {

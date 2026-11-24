@@ -309,6 +309,12 @@ class BattleScene {
     this.ei++;
     if (this.ei >= this.team.length) return true;
     const nx = this.team[this.ei]; const mon = makeMon(W, nx.sp, nx.lvl); mon.hp = this.hpMax(mon, true); this.enemy = { mon, boost: 0 }; G.save.seen[nx.sp] = 1;
+    // tell the player what's coming and let them swap before it arrives
+    const nsp = W.species[nx.sp]; const info = `${nsp.name} (${TYPES[nsp.type]?.name || nsp.type} type) · Lv ${nx.lvl}`;
+    for (let k = 0; k < this.allies.length; k++) { const al = this.allies[k]; if (!al.mon || al.mon.hp <= 0) continue; const p = G.save.players[al.pi];
+      if (!p.party.some((m) => m.hp > 0 && m !== al.mon)) continue;
+      const c = await ui.choose(`${this.o.trainerTitle} is about to send out *${info}*. ${this.allies.length > 1 ? p.name + ': ' : ''}Switch monsters, or keep ${monName(W, al.mon)} in?`, [`Keep ${monName(W, al.mon)}`, 'Switch monster'], { cancel: false });
+      if (c === 1) await this.switchMenu(al, k, true, info); }
     this.spr('e').y = 0; this.spr('e').a = 0; this.enemyVisible = true; this.hud(); await this.animEnter('e');
     await this.msg(`${this.o.trainerTitle} sent out ${W.species[nx.sp].name}!`);
     return false;
@@ -319,10 +325,13 @@ class BattleScene {
       if (x.type === 'move') await this.msg(`${monName(G.W, m)} learned ${x.move}!`, 1200);
     }
   }
-  async switchMenu(al, k, cancel) {
+  async switchMenu(al, k, cancel, foeInfo) {
     const W = G.W; const p = G.save.players[al.pi];
     const opts = p.party.map((m) => ({ html: monRow(W, m), disabled: m.hp <= 0 || m === al.mon }));
-    const i = await ui.choose(`${p.name}: choose a monster.`, opts, { cancel, cls: 'teamlist' });
+    const fm = this.enemy?.mon; const fsp = fm && W.species[fm.sp]; const foe = foeInfo || (fm && fm.hp > 0 && this.enemyVisible !== false ? `${fsp.name} (${TYPES[fsp.type]?.name || fsp.type} type) · Lv ${fm.lvl}` : '');
+    const fainted = al.mon && al.mon.hp <= 0;
+    const title = `${this.allies.length > 1 ? p.name + ': ' : ''}${fainted ? `${monName(W, al.mon)} fainted — who goes out next?` : 'Choose a monster.'}${foe ? ` Facing: *${foe}*` : ''}`;
+    const i = await ui.choose(title, opts, { cancel, cls: 'teamlist' });
     if (i < 0) return false;
     if (al.mon && al.mon.hp > 0) { await this.msg(`Come back, ${monName(W, al.mon)}!`, 700); }
     al.mon = p.party[i]; al.boost = 0; al.part.add(al.mon.uid); al.visible = true; const s = this.spr('a' + k); s.y = 0; s.a = 0; this.hud();

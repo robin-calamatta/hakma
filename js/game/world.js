@@ -77,6 +77,7 @@ export class World {
     f.dir = dx > 0 ? 'right' : dx < 0 ? 'left' : dy > 0 ? 'down' : 'up';
     f.fx = f.x; f.fy = f.y; f.x = p.fx; f.y = p.fy; f.mt = 0; f.moving = true; f.stepT = p.stepT;
   }
+  petFx() { const f = this.fol; if (!f) return; f.hopT = 0.9; this.hearts = Array.from({ length: 6 }, (_, i) => ({ x: f.px + 8 + (Math.random() - 0.5) * 14, y: f.py, vy: -18 - Math.random() * 14, t: 1.2 + i * 0.08 })); }
   emote(txt, t = 1.6) { if (this.fol) { this.fol.emote = txt; this.fol.emoteT = t; } }
   savePos() { G.save.pos = this.lp.map((p) => ({ x: p.x, y: p.y, dir: p.dir })); }
   visible(o) {
@@ -113,15 +114,22 @@ export class World {
         if (k >= 1) { p.moving = false; p.px = p.x * TS; p.py = p.y * TS; this.afterStep(p); }
         continue;
       }
-      if (!this.canControl()) continue;
+      if (!this.canControl()) { p.lastD = null; continue; }
       const d = input.dir(p.i);
-      if (d) this.tryMove(p, d, input.running(p.i));
+      // tap a new direction from a standstill to pivot in place; keep holding it to walk
+      if (d && d !== p.dir && !p.lastD) { p.dir = d; p.turnT = 0.14; G.net?.sendPos?.(); }
+      else if (d && p.turnT > 0) p.turnT -= dt;
+      else if (d) this.tryMove(p, d, input.running(p.i));
+      if (!d) p.turnT = 0;
+      p.lastD = d;
       if (input.pressed(p.i, 'a')) this.interact(p);
       if (input.pressed(p.i, 'start')) { G.events.openMenu(p.i); }
     }
     // partner follower
     const f = this.fol;
     if (f) { if (f.moving) { f.mt += dt / f.stepT; const k = Math.min(1, f.mt); f.px = (f.fx + (f.x - f.fx) * k) * TS; f.py = (f.fy + (f.y - f.fy) * k) * TS; if (k >= 1) { f.moving = false; f.px = f.x * TS; f.py = f.y * TS; } } if (f.emoteT > 0) f.emoteT -= dt; }
+    if (f && f.hopT > 0) f.hopT -= dt;
+    if (this.hearts) { for (const h of this.hearts) { h.t -= dt; h.y += h.vy * dt; h.x += Math.sin(h.t * 6) * 0.3; } this.hearts = this.hearts.filter((h) => h.t > 0); if (!this.hearts.length) this.hearts = null; }
     // NPC wander
     for (const o of this.objs) {
       if (!o.wander || !this.canControl()) continue;
@@ -216,6 +224,7 @@ export class World {
     for (const p of this.lp) ents.push({ y: p.py + 4.1, draw: () => this.drawPerson(g, p.sheet, p.px - cx, p.py - cy, p.dir, p.moving ? (Math.floor(p.mt * 2) % 2) + 1 : 0, this.lp.length > 1 ? 'P' + (p.i + 1) : null, G.save.players[p.i].color, p) });
     for (const pr of G.net?.peersHere?.() || []) { const d = this.peerDraw[pr.id]; if (!d) continue; const sheet = pr.sheet || (pr.sheet = personSheet(personPalette(hash(pr.name), { shirt: pr.color || '#888' }))); const mv = Math.abs(d.x - pr.x * TS) + Math.abs(d.y - pr.y * TS) > 1; ents.push({ y: d.y + 4, draw: () => { this.drawPerson(g, sheet, d.x - cx, d.y - cy, pr.dir || 'down', mv ? (Math.floor(this.t * 6) % 2) + 1 : 0, pr.name, pr.color || '#888', { x: Math.round(d.x / TS), y: Math.round(d.y / TS) }); if (pr.bubble && pr.bubbleUntil > Date.now()) this.bubble(g, d.x - cx + 8, d.y - cy - 14, pr.bubble); } }); }
     ents.sort((a, b) => a.y - b.y).forEach((e) => e.draw());
+    if (this.hearts) for (const h of this.hearts) { const x = Math.round(h.x - cx), y = Math.round(h.y - cy), a = Math.min(1, h.t); g.globalAlpha = a; g.fillStyle = '#ff5d8a'; g.fillRect(x - 2, y, 2, 2); g.fillRect(x + 1, y, 2, 2); g.fillRect(x - 3, y + 1, 7, 2); g.fillRect(x - 2, y + 3, 5, 1); g.fillRect(x - 1, y + 4, 3, 1); g.fillRect(x, y + 5, 1, 1); g.globalAlpha = 1; }
     for (const f of this.fx) { g.globalAlpha = Math.min(1, f.life * 2); g.fillStyle = f.c; g.fillRect(Math.round(f.x - cx), Math.round(f.y - cy), 2, 2); } g.globalAlpha = 1;
     if (!inside && B === 'snow') { g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 40; i++) { const x = (i * 97 + this.t * 20 * (1 + (i % 3))) % view.w, y = (i * 53 + this.t * 30 * (1 + (i % 2))) % view.h; g.fillRect(x, y, 1, 1); } }
     if (!inside) { if (m.era) drawEraTint(g, this.t, view, m.era); else if (G.settings?.seasonFx !== false) drawSeason(g, this.t, view, season().fx, B); }
@@ -265,7 +274,7 @@ export class World {
   drawPartner(g, f, m, x, y) {
     const sp = G.W.species[m.sp]; if (!sp) return;
     const img = monsterCanvas(sp, f.dir === 'up', lookOf(m));
-    const hop = f.moving ? -Math.abs(Math.sin(f.mt * Math.PI)) * 3 : Math.sin(this.t * 3) * 0.6;
+    const hop = f.moving ? -Math.abs(Math.sin(f.mt * Math.PI)) * 3 : f.hopT > 0 ? -Math.abs(Math.sin(f.hopT * 11)) * 5 : Math.sin(this.t * 3) * 0.6;
     const S = 30;
     g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(x + 8, y + 13, 7, 2.5, 0, 0, 6.29); g.fill();
     g.save();

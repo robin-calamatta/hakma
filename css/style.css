@@ -22,7 +22,7 @@ button, .btn { font: inherit; color: var(--ink); background: var(--box2); border
 button[disabled] { opacity: 0.4; cursor: default; }
 button.sel, .btn.sel, button:hover:not([disabled]) { border-color: var(--sel); color: var(--sel); background: #3a2a7a; outline: none; }
 button.sel::before { content: '▶ '; }
-.titlemenu button.sel::before, .tcard.sel::before, .card.sel::before, .dexc.sel::before, .mrow.sel::before, .irow.sel::before, .srow.sel::before { content: ''; }
+.titlemenu button.sel::before, .tcard.sel::before, .card.sel::before, .dexc.sel::before, .mrow.sel::before, .irow.sel::before, .srow.sel::before, .bcell.sel::before { content: none; }
 /* pixel box */
 .dialog, .choice, .panel, .quiz, .btext, .bhud, .toast, #banner { background: var(--box); border: calc(var(--px) * 2) solid var(--edge); box-shadow: inset 0 0 0 calc(var(--px) * 1) #000, 0 0 0 calc(var(--px) * 1) #000, calc(var(--px) * 2) calc(var(--px) * 2) 0 #0008; }
 .dialog { position: absolute; left: 2%; right: 2%; bottom: 2.5%; min-height: 27%; padding: 0.6em 0.9em; font-size: 1.25em; }
@@ -268,3 +268,8 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 .dexc.rar-mythic { box-shadow: 0 0 10px rgba(255, 95, 210, 0.7); }
 .dexc .stars { font-style: normal; font-size: 0.8em; letter-spacing: -1px; }
 .rarline { margin: 0 0 4px; font-weight: bold; text-shadow: 0 1px 0 #000; }
+
+.boxnav { display: flex; align-items: center; justify-content: space-between; gap: 0.4em; margin-bottom: 0.4em; } .boxnav h4 { margin: 0; flex: 1; text-align: center; } .boxnav button { min-width: 2.4em; }
+.boxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.4em, 1fr)); gap: 0.35em; max-height: 52vh; overflow: auto; }
+.bcell { display: flex; flex-direction: column; align-items: center; gap: 0.15em; padding: 0.35em 0.2em; font-size: 0.78em; text-align: center; }
+.bcell .mini { width: 2.4em; height: 2.4em; } .bcell .bn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; } .bcell .bl { font-size: 0.85em; opacity: 0.85; } .bcell .type { font-style: normal; font-size: 0.9em; padding: 0 0.3em; }

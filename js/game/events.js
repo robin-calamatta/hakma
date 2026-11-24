@@ -229,10 +229,22 @@ const handlers = {
     const it = ITEMS[o.item]; S().bag[o.item] = (S().bag[o.item] || 0) + (o.count || 1); S().taken[o.key] = 1; audio.sfx('item');
     await say(`${o.hidden ? 'Something was glinting here... ' : ''}Found ${o.count > 1 ? o.count + '× ' : 'a '}*${it.name}*!`);
   },
+  async pet(m, name) {
+    const today = new Date().toDateString(); const first = m.petDay !== today; m.petDay = today; m.pets = (m.pets || 0) + 1;
+    if (first) m.bond = Math.min(100, (m.bond || 0) + 5);
+    audio.sfx('heal'); G.world.petFx?.(); G.world.emote('♥', 2.2);
+    const b = m.bond || 0; const hearts = '♥'.repeat(1 + Math.floor(b / 25)) + '♡'.repeat(Math.max(0, 4 - Math.floor(b / 25)));
+    const lines = [`${name} closes its eyes and leans into your hand.`, `${name} wiggles happily!`, `${name} makes a happy little chirp.`, `${name} rolls over for more pets.`, `${name} nuzzles your palm.`];
+    await say([lines[(m.pets + hash(m.uid)) % lines.length], first ? `Your bond grew! Friendship ${hearts}` : `Friendship ${hearts}`]);
+    autosave();
+  },
   async partner() {
     const w = W(), s = S(); const m = G.world.followMon(); if (!m) return; const sp = w.species[m.sp]; const name = monName(w, m);
     const f = G.world.fol, p = G.world.lp[0]; if (f) f.dir = { up: 'down', down: 'up', left: 'right', right: 'left' }[p.dir];
     const hpPct = m.hp / maxHp(w, m); audio.sfx('select');
+    const act = await ui.choose(`${name} looks up at you.`, ['🤚 Pet', '💬 Talk'], { cols: 2 });
+    if (act < 0) return;
+    if (act === 0) return handlers.pet(m, name);
     if (hpPct < 0.35) { G.world.emote('…'); await say(`${name} looks worn out. A Mend Center would perk it right up.`); return; }
     const k = (s.partnerTalks = (s.partnerTalks || 0) + 1);
     if (sp.termId && k % 3 === 1) {
