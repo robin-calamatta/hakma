@@ -180,8 +180,9 @@ body.editctl #touch > .ctlsel { outline: 3px solid #ffe14c; box-shadow: 0 0 18px
 #ctlbar { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 30; width: min(94vw, 560px); background: #1c1440; border: 2px solid #fff; padding: 8px 10px; font: 14px system-ui, sans-serif; color: #fff; display: flex; flex-direction: column; gap: 6px; }
 #ctlbar b { color: #ffe14c; font-weight: 600; } #ctlbar .r { display: flex; flex-wrap: wrap; gap: 6px; } #ctlbar button { font: 14px system-ui, sans-serif; padding: 6px 10px; text-align: center; }
 #touch button.run.on { background: #8a6a10; border-color: #ffd23f; color: #fff6c0; }
-.rmap { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0.6em; align-items: start; }
-.rmap canvas { width: 100%; image-rendering: pixelated; border: calc(var(--px) * 2) solid #000; }
+.rmap { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 0.6em; align-items: start; }
+.rmapwrap { max-height: 72vh; overflow-y: auto; border: calc(var(--px) * 2) solid #000; border-radius: 6px; background: #17466b; }
+.rmap canvas { width: 100%; display: block; image-rendering: auto; }
 .rlist { display: flex; flex-direction: column; gap: 0.2em; } .rlist small { opacity: 0.7; }
 .rlist .skills { display: flex; gap: 0.6em; flex-wrap: wrap; margin-top: 0.4em; } .rlist .skills span { opacity: 0.5; } .rlist .skills span.on { opacity: 1; color: var(--ok); }
 body.portrait .rmap { grid-template-columns: 1fr; }
@@ -260,3 +261,10 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 
 .arcade .slot { font-size: 22px; } .arcade .tiles button { font-size: 18px; }
 @media (max-width: 700px) { .lesson .lessonbody { font-size: 14px; } .arcade .clue { font-size: 14px; } }
+/* rarity */
+.bhud .rar { font-size: 0.7em; letter-spacing: 1px; margin: -1px 0 2px; text-shadow: 0 1px 0 #000; }
+.shinymark { color: #9ff8ff; text-shadow: 0 0 4px #4cf0ff; }
+.dexc.rar-legendary, .dexc.rar-mythic { box-shadow: 0 0 8px rgba(255, 210, 63, 0.55); }
+.dexc.rar-mythic { box-shadow: 0 0 10px rgba(255, 95, 210, 0.7); }
+.dexc .stars { font-style: normal; font-size: 0.8em; letter-spacing: -1px; }
+.rarline { margin: 0 0 4px; font-weight: bold; text-shadow: 0 1px 0 #000; }

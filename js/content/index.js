@@ -17,8 +17,12 @@ import spanish from './topics/spanish.js';
 import maltese from './topics/maltese.js';
 import automotive from './topics/automotive.js';
 import finance from './topics/finance.js';
+import networking from './topics/networking.js';
+import cybersec from './topics/cybersec.js';
+import hacking from './topics/hacking.js';
+import trading from './topics/trading.js';
 
 export const TOPICS = [
-  cs, kubernetes, python, java, softeng, devops, golang, terraform, electrical, electrician, automotive, finance, french, spanish, maltese,
+  cs, kubernetes, python, java, softeng, devops, golang, terraform, networking, cybersec, hacking, electrical, electrician, automotive, finance, trading, french, spanish, maltese,
   mathElem, mathMiddle, mathHigh, elaElem, elaHigh, scienceElem, physics, chemistry, biology,
 ];

@@ -17,4 +17,6 @@ import './finance.js';
 import './math.js';
 import './ela.js';
 import './science.js';
+import './security.js';
+import './trading.js';
 export { DEEP, DEEP_META } from './index.js';

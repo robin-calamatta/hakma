@@ -135,6 +135,30 @@ export const ERAS = {
       ['A robo-advisor is…', 'Software that builds and rebalances investment portfolios automatically', 'A bank robot guard', 'A stock exchange', 'A tax auditor', 'Usually with low fees.'],
       ['Real-time payment systems mean…', 'Money transfers settle in seconds, 24/7', 'Only weekday transfers', 'Cheques only', 'Payments take a month', 'Many countries are building them.']]),
   },
+  networking: {
+    past: E('The ARPANET Days', '1969–1991', ['ARPANET sent its first message between UCLA and Stanford in 1969 — the system crashed after "LO".', 'ARPANET switched to TCP/IP on January 1, 1983.', 'Tim Berners-Lee invented the World Wide Web at CERN; it went public in 1991.'], [
+      ['The first ARPANET message (1969) crashed after which letters?', '"LO" (from "LOGIN")', '"HELLO"', '"WWW"', '"OK"', 'Sent from UCLA to Stanford.'],
+      ['When did ARPANET switch to TCP/IP?', 'January 1, 1983', '1969', '1995', '2001', 'Often called the internet\'s birthday.'],
+      ['Who invented the World Wide Web?', 'Tim Berners-Lee', 'Vint Cerf', 'Bill Gates', 'Steve Jobs', 'At CERN, 1989–1991.'],
+      ['Vint Cerf and Bob Kahn are famous for designing…', 'TCP/IP', 'Wi-Fi', 'HTML', 'Ethernet', 'The "fathers of the internet".']]),
+    future: E('The Hyperconnected Horizon', 'Tomorrow', ['IPv6 adoption keeps rising as IPv4 addresses ran out.', 'Satellite constellations in low Earth orbit bring broadband to remote places.', 'Researchers are building quantum networks that use entanglement for ultra-secure keys.'], [
+      ['Why is IPv6 adoption growing?', 'IPv4 addresses ran out', 'IPv6 is shorter', 'IPv4 is illegal', 'Wi-Fi requires it', '128-bit addresses.'],
+      ['Low-Earth-orbit satellite internet mainly improves…', 'latency compared with geostationary satellites', 'cable speeds', 'DNS caching', 'battery life', 'Closer satellites = shorter trips.'],
+      ['Quantum key distribution promises…', 'keys whose interception can be detected', 'faster downloads', 'free bandwidth', 'no need for routers', 'Measuring disturbs quantum states.'],
+      ['Wi-Fi 7 (802.11be) adds…', 'multi-link operation and wider channels', 'WEP security', 'copper cables', 'dial-up', 'Faster, more reliable wireless.']]),
+  },
+  security: {
+    past: E('Codebreakers & Worms', '1940s–1990s', ['Codebreakers at Bletchley Park, including Alan Turing, broke the Enigma cipher in WWII.', 'Diffie and Hellman published public-key exchange in 1976; RSA followed in 1977.', 'The 1988 Morris worm infected about 10% of the early internet.'], [
+      ['Which WWII cipher did Bletchley Park break?', 'Enigma', 'AES', 'RSA', 'Caesar', 'Alan Turing helped build the Bombe.'],
+      ['Public-key exchange was published in 1976 by…', 'Diffie and Hellman', 'Turing and Lovelace', 'Gates and Allen', 'Berners-Lee', 'A revolution in cryptography.'],
+      ['The 1988 Morris worm is famous because…', 'it was one of the first worms to spread across the internet', 'it encrypted files for ransom', 'it was harmless', 'it attacked phones', 'It led to the first CERT.'],
+      ['The Caesar cipher works by…', 'shifting each letter a fixed number of places', 'using public keys', 'hashing words', 'random noise', 'Easily broken.']]),
+    future: E('The Post-Quantum Frontier', 'Tomorrow', ['NIST published its first post-quantum cryptography standards in 2024.', 'Passkeys are replacing passwords with phishing-resistant logins.', 'Zero-trust architectures verify every request instead of trusting the network.'], [
+      ['Post-quantum cryptography protects against…', 'future quantum computers breaking today\'s public-key crypto', 'viruses', 'slow Wi-Fi', 'spam', 'NIST standards from 2024.'],
+      ['Passkeys resist phishing because…', 'they are cryptographically bound to the real website', 'they are long passwords', 'they are sent by SMS', 'they never expire', 'Fake sites can\'t use them.'],
+      ['Zero trust means…', 'never trust, always verify', 'trust the internal network', 'no passwords', 'no encryption', 'Every request checked.'],
+      ['"Harvest now, decrypt later" refers to…', 'storing encrypted data today to break with quantum computers later', 'backup strategies', 'farming', 'cookie policies', 'Why migration starts now.']]),
+  },
   french: {
     past: E('Old France', '842–1635', ['French grew out of the Latin spoken by ordinary Romans in Gaul.', 'The Oaths of Strasbourg (842) are one of the earliest texts in an early form of French.', 'The Académie française was founded in 1635 to guard the language.'], [
       ['French developed mainly from…', 'Latin', 'Greek', 'German', 'Arabic', 'Vulgar (everyday) Latin spoken in Gaul.'],
@@ -244,5 +268,5 @@ export const ERAS = {
       ['Synthetic biology means…', 'Designing and building new biological parts and systems', 'Plastic animals', 'Robots made of metal', 'Studying fossils only', 'E.g. microbes engineered to make medicines.']]),
   },
 };
-const SET = { electrician: 'electrical', 'math-elem': 'math', 'math-middle': 'math', 'math-high': 'math', 'ela-elem': 'ela', 'ela-high': 'ela', 'science-elem': 'science' };
+const SET = { cybersec: 'security', hacking: 'security', trading: 'finance', electrician: 'electrical', 'math-elem': 'math', 'math-middle': 'math', 'math-high': 'math', 'ela-elem': 'ela', 'ela-high': 'ela', 'science-elem': 'science' };
 export const eraSetFor = (topicId) => ERAS[SET[topicId] || topicId] || ERAS.cs;

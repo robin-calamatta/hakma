@@ -192,3 +192,67 @@ export const arcadeHandlers = {
   async cabinet(o) { await cabinet(o.game, o.ci); },
   async arcadehost(o) { await arcadeHost(o); },
 };
+
+// ------------------------------------------------------------ secrets: hidden doors and legendary encounters
+import { runBattle } from './battle.js';
+import { afterBattle } from './events.js';
+import { RARITY } from './content.js';
+export const SECRET_IDS = (W) => [...[2, 3, 4, 5, 6, 7, 8].map((r) => 'grove' + r), ...[0, 1, 2, 3].map((k) => 'lair' + k), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => 'garden' + i), 'sanctum'];
+export function discover(id) {
+  const s = S(); if (!SECRET_IDS(W()).includes(id) || s.flags['found_' + id]) return;
+  s.flags['found_' + id] = 1; const n = SECRET_IDS(W()).filter((x) => s.flags['found_' + x]).length;
+  audio.sfx('badge'); ui.toast(`🗝 Secret area discovered! (${n}/${SECRET_IDS(W()).length})`, 3600);
+}
+export const secretHandlers = {
+  async secretdoor(o) {
+    const s = S();
+    if (o.need === 'badges' && !s.badges.every(Boolean)) { await ui.say([o.label, `Only ${s.badges.filter(Boolean).length}/8 hollows glow. Return when you hold every badge.`]); return; }
+    await ui.say([o.label, 'You squeeze through…']); audio.sfx('door');
+    await ui.fade(true, 350); await G.world.warp(o.to, o.tx, o.ty, o.dir); await ui.fade(false, 350);
+  },
+  async legend(o) {
+    const s = S(); const sp = W().species[o.sp]; if (s.flags[o.key]) return;
+    const rr = RARITY[sp.rarity];
+    await ui.say([`${'★'.repeat(rr.stars)} ${rr.name.toUpperCase()} ${'★'.repeat(rr.stars)}`, `${sp.name}, ${sp.title}, opens its eyes…`, sp.rarity === 'mythic' ? 'The air hums with every lesson you have ever learned.' : 'It will test everything you know.']);
+    if (!(await ui.confirm(`Challenge ${sp.name} (Lv${o.lvl})? It can be caught — but it won\'t be easy.`))) return;
+    G.busy++; audio.sfx('encounter'); const top = Math.max(...s.players.flatMap((p) => p.party.map((m) => m.lvl)), 1); const lvl = Math.min(100, Math.max(o.lvl, top + (sp.rarity === 'mythic' ? 5 : 3)));
+    const r = await runBattle({ kind: 'wild', enemies: [{ sp: o.sp, lvl }], qci: 'final', biome: G.world.map.biome, music: 'gym', seed: o.key, legend: true });
+    G.busy--;
+    if (r === 'caught' || s.players.some((p) => [...p.party, ...(p.box || [])].some((m) => m.sp === o.sp))) { s.flags[o.key] = 1; await ui.say(`${sp.name} joined you! Its legend is now yours.`); G.autosave(); }
+    else if (r === 'win') await ui.say(`${sp.name} dissolves into light… It will return to this place. Bring stronger cubes next time!`);
+    await afterBattle(r);
+  },
+};
+
+// ------------------------------------------------------------ Wonderland Park rides
+import { healMon, badgeCount } from './state.js';
+export const parkHandlers = {
+  async rideop(o) {
+    const s = S(); const ci = Math.min(badgeCount(s), 7);
+    if (o.ride === 'wheel') {
+      if (!(await ui.confirm('Ride the Ferris Wheel? From the top you can see the whole region!'))) return;
+      audio.sfx('evolve'); await ui.fade(true, 500); await ui.fade(false, 500); await ui.say(['Up… up… up…', 'From the very top the whole region spreads out below you!']);
+      const M = await import('./menus.js'); await M.regionMap(); return;
+    }
+    if (o.ride === 'coaster') {
+      if (!(await ui.confirm('🎢 QUIZ COASTER — 6 questions, each one faster! Miss one and the ride ends. Ready?'))) return;
+      let n = 0; for (; n < 6; n++) { const q = W().pickQ(ci, s, { review: 0, lvl: n < 2 ? 1 : n < 4 ? 2 : 3 }); const r = await ui.question(q, { tag: `Quiz Coaster · loop ${n + 1}/6`, quick: 9 - n }); recordAnswer(s, q, r.correct, r.quick); audio.sfx(r.correct ? 'correct' : 'wrong'); if (!r.correct) break; }
+      await ui.say([n >= 6 ? '🎢 WHEEE! You rode the whole Quiz Coaster!' : `The coaster screeches to a stop after ${n} loop${n === 1 ? '' : 's'}.`, ...prize('coaster', 0, n, 6, 'the Quiz Coaster')]); return;
+    }
+    if (o.ride === 'carousel') {
+      await ui.say(['Round and round you go on a painted monster…']); audio.sfx('heal');
+      s.players.forEach((p) => p.party.forEach((m) => healMon(W(), m))); await ui.say('Your team feels completely refreshed!'); G.autosave?.(); return;
+    }
+    if (o.ride === 'tent') {
+      if (!(await ui.confirm('🎪 BIG TOP TRIVIA SHOW — 4 questions from everywhere you\'ve been, in front of a live crowd! Ready?'))) return;
+      let score = 0; for (let k = 0; k < 4; k++) { const q = W().pickQ(R.int(0, ci), s, { review: 0, lvl: 2 + (k >> 1), mix: false }); const r = await ui.question(q, { tag: `Big Top · act ${k + 1}/4 · ${score}` }); recordAnswer(s, q, r.correct, r.quick); if (r.correct) { score++; audio.sfx('correct'); } }
+      await ui.say([score === 4 ? '👏 Standing ovation! A perfect show!' : `The crowd cheers! ${score}/4.`, ...prize('bigtop', 0, score, 4, 'the Big Top')]); return;
+    }
+  },
+  async mascot(o) {
+    const s = S(); const today = new Date().toDateString();
+    if (s.flags.mascotDay === today) { await ui.say(['Parky waves enthusiastically and does a little dance.', 'Come back tomorrow for another surprise!'], { name: o.name }); return; }
+    s.flags.mascotDay = today; const it = R.pick(['supertonic', 'cube2', 'revive', 'maxtonic']); s.bag[it] = (s.bag[it] || 0) + 1; audio.sfx('item');
+    await ui.say(['Parky spins around and hands you a gift!', `Got 1× ${ITEMS[it]?.name || it}!`], { name: o.name }); G.autosave?.();
+  },
+};

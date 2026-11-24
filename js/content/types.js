@@ -51,6 +51,14 @@ export const GENRES = {
     structure: ['Risk', '⚡', '#b36bff', 'Volatility, insurance, uncertainty', ['Hedge', 'Insure', 'Volatility', 'Black Swan'], 'Market Shock'],
     flux: ['Stock', '▲', '#ffd23f', 'Shares, markets, growth', ['Buy', 'Dividend', 'Rally', 'Bull Run'], 'Compound Growth'],
     beatsWhy: ['tax takes a cut of cash', 'cash pays off debt', 'debt can seize assets', 'assets cushion risk', 'risk crashes stocks', 'growth outpaces tax'] }),
+  sec: G({ label: 'Security & Networks',
+    logic: ['Firewall', '🛡', '#4aa8ff', 'Rules, filtering, perimeter defence', ['Block', 'Rule Up', 'Deny All', 'Zero Trust Wall'], 'Default Deny'],
+    cipher: ['Malware', '☣', '#ff6a3d', 'Viruses, worms, ransomware', ['Infect', 'Replicate', 'Payload Drop', 'Ransom Lock'], 'Zero-Day Strike'],
+    spark: ['Key', '⚿', '#ffd23f', 'Passwords, tokens, credentials', ['Login', 'MFA Boost', 'Token Strike', 'Master Key'], 'Passkey Pierce'],
+    data: ['Crypto', '🔒', '#b36bff', 'Encryption, hashing, signatures', ['Hash', 'Salt', 'Cipher Lock', 'AES Storm'], 'Quantum-Safe Seal'],
+    structure: ['Packet', '✉', '#3ddc84', 'Traffic, protocols, routing', ['Ping', 'Handshake', 'Packet Flood', 'Route Storm'], 'Fibre Torrent'],
+    flux: ['Phish', '🎣', '#c98b52', 'Social engineering and deception', ['Lure', 'Spoof', 'Pretext', 'Spear Phish'], 'Whale Hook'],
+    beatsWhy: ['firewalls block malware', 'malware steals keys', 'keys unlock encryption', 'encryption hides packets', 'packet inspection catches phishing links', 'phishing walks right past the firewall'] }),
   math: G({ label: 'Math',
     logic: ['Variable', 'x', '#4aa8ff', 'Unknowns, algebra, equations', ['Solve', 'Isolate', 'Substitute', 'System Solve'], 'Quadratic Formula'],
     cipher: ['Number', '#', '#b36bff', 'Counting, operations, place value', ['Count', 'Add Up', 'Multiply', 'Exponent Blast'], 'Power of Ten'],
@@ -76,7 +84,7 @@ export const GENRES = {
     flux: ['Idea', '✦', '#ff6a3d', 'Themes, arguments, imagination', ['Brainstorm', 'Inspire', 'Thesis', 'Big Idea'], 'Eureka'],
     beatsWhy: ['grammar shapes poems', 'poems outshine plain talk', 'voice gives words power', 'words build stories', 'stories carry ideas', 'new ideas break the rules'] }),
 };
-const TOPIC_GENRE = { automotive: 'auto', electrical: 'trade', electrician: 'trade', french: 'lang', spanish: 'lang', maltese: 'lang', finance: 'biz',
+const TOPIC_GENRE = { networking: 'sec', cybersec: 'sec', hacking: 'sec', trading: 'biz', automotive: 'auto', electrical: 'trade', electrician: 'trade', french: 'lang', spanish: 'lang', maltese: 'lang', finance: 'biz',
   'math-elem': 'math', 'math-middle': 'math', 'math-high': 'math', 'science-elem': 'science', physics: 'science', chemistry: 'science', biology: 'science', 'ela-elem': 'ela', 'ela-high': 'ela' };
 export const genreOf = (topic) => (topic && (topic.genre || TOPIC_GENRE[topic.id])) || 'tech';
 const DEFAULTS = Object.fromEntries(Object.entries(TYPES).map(([k, v]) => [k, { ...v }]));

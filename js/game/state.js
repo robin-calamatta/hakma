@@ -60,6 +60,7 @@ export const FIELD_SKILLS = {
 };
 export const tmMove = (id) => ({ name: ITEMS[id].move, power: 85, type: ITEMS[id].type, kind: 'hit', lvl: 1, tm: true });
 export const movesOf = (W, m) => W.species[m.sp].moves.filter((mv) => mv.lvl <= m.lvl).concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
+export const lookOf = (m) => (m?.era || '') + (m?.shiny ? '*' : '');
 export const ERA_PREFIX = { past: 'Ancient ', future: 'Neo-' };
 export const monName = (W, m) => m.nick || (ERA_PREFIX[m.era] || '') + W.species[m.sp].name;
 // Status conditions. Flux moves can burn, Cipher moves can poison, Data moves can make a monster sick.

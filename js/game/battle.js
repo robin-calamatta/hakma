@@ -1,5 +1,6 @@
 // Battles: every attack is a question. Correct = hit, fast = Quick Recall crit, wrong = miss + explanation.
-import { STATUS } from './state.js';
+import { RARITY } from './content.js';
+import { STATUS, lookOf } from './state.js';
 import { G, ITEMS, xpToNext, makeMon, stats, maxHp, movesOf, monName, gainXp, checkEvolve, evolve, addMon, recordAnswer, badgeCount } from './state.js';
 import { view } from '../core/view.js';
 import { ui, fmt } from './ui.js';
@@ -66,7 +67,8 @@ class BattleScene {
     g.drawImage(this.bg, 0, 0);
     const bob = (ph) => Math.round(Math.sin(this.t * 2.4 + ph) * 1.5);
     const drawMon = (sp, back, x, y, s, st, ph, mon, enemy) => {
-      let c = monsterCanvas(sp, back, mon?.era); const w = 56 * s * st.s; let h = 56 * s * st.s;
+      let c = monsterCanvas(sp, back, lookOf(mon)); const regal = sp.rarity === 'legendary' || sp.rarity === 'mythic'; const w = 56 * s * st.s * (regal ? 1.22 : 1); let h = 56 * s * st.s * (regal ? 1.22 : 1);
+      if (regal || mon?.shiny) { const t = performance.now() / 600; g.save(); g.globalAlpha = 0.18 + Math.sin(t) * 0.08; g.fillStyle = sp.rarity === 'mythic' ? '#ff9ff0' : regal ? '#ffd23f' : '#9ff8ff'; g.beginPath(); g.ellipse(x, y - h * 0.45, w * 0.55, h * 0.5, 0, 0, 7); g.fill(); g.restore(); }
       // ---- condition looks: injured (low HP), poisoned, burned, sick
       const hpPct = mon ? clamp(mon.hp / this.hpMax(mon, enemy), 0, 1) : 1; const status = mon && mon.hp > 0 ? mon.status : null;
       let dx = 0, dy = 0; let tint = null, ta = 0;
@@ -122,7 +124,7 @@ class BattleScene {
   hud() {
     const el = document.getElementById('hud'); const W = G.W;
     const box = (m, cls, extra = '') => { const sp = W.species[m.sp]; const mh = this.hpMax(m, cls === 'enemy'); const pct = clamp(m.hp / mh, 0, 1) * 100; const col = pct > 50 ? 'g' : pct > 20 ? 'y' : 'r';
-      return `<div class="bhud ${cls}"><div class="nm">${esc(monName(W, m))} <span class="lv">Lv${m.lvl}</span></div><div class="tt"><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}${extra}</div><div class="hp"><i class="${col}" style="width:${pct}%"></i></div>${cls !== 'enemy' ? `<div class="hpn">${Math.max(0, Math.ceil(m.hp))}/${mh}</div>` : ''}</div>`; };
+      return `<div class="bhud ${cls}"><div class="nm">${esc(monName(W, m))}${m.shiny ? ' <span class="shinymark">✦</span>' : ''} <span class="lv">Lv${m.lvl}</span></div><div class="rar" style="color:${RARITY[sp.rarity]?.color}">${'★'.repeat(RARITY[sp.rarity]?.stars || 1)} ${RARITY[sp.rarity]?.name || ''}</div><div class="tt"><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}${extra}</div><div class="hp"><i class="${col}" style="width:${pct}%"></i></div>${cls !== 'enemy' ? `<div class="hpn">${Math.max(0, Math.ceil(m.hp))}/${mh}</div>` : ''}</div>`; };
     let h = '';
     if (this.enemy && this.enemyVisible) h += box(this.enemy.mon, 'enemy', this.o.kind === 'wild' && G.save.caught[this.enemy.mon.sp] ? ' <span class="caughtmark">◆</span>' : '');
     h += `<div class="allyhuds ${this.allies.length > 1 ? 'compact' : ''}">` + this.allies.map((a, k) => a.visible ? box(a.mon, 'ally', this.allies.length > 1 ? ` <span class="pl" style="background:${G.save.players[a.pi].color}">P${a.pi + 1}</span>` : '') : '').join('') + '</div>';
@@ -162,9 +164,11 @@ class BattleScene {
     // intro wipe
     audio.play('battle:' + (o.music || 'battle') + ':' + (o.seed || W.id), o.seed || W.id, o.music || 'battle');
     this.wipe = 1; await tween(380, (k) => { this.wipe = 1 - k; }); this.wipe = undefined;
-    const spawnEnemy = (k) => { const e = o.enemies[k]; const mon = makeMon(W, e.sp, e.lvl); if (e.era) mon.era = e.era; mon.hp = this.hpMax(mon, true); this.enemy = { mon, boost: 0 }; G.save.seen[e.sp] = 1; };
+    const spawnEnemy = (k) => { const e = o.enemies[k]; const mon = makeMon(W, e.sp, e.lvl); if (e.era) mon.era = e.era; if (e.shiny) mon.shiny = true; mon.hp = this.hpMax(mon, true); this.enemy = { mon, boost: 0 }; G.save.seen[e.sp] = 1; };
     spawnEnemy(0);
-    if (o.kind === 'wild') { this.enemyVisible = true; this.spr('e').x = 160; this.hud(); await tween(400, (k) => { this.spr('e').x = 160 * (1 - ease(k)); }); await this.msg(`A wild ${W.species[this.enemy.mon.sp].name} appeared!`); }
+    if (o.kind === 'wild') { this.enemyVisible = true; this.spr('e').x = 160; this.hud(); await tween(400, (k) => { this.spr('e').x = 160 * (1 - ease(k)); }); const esp = W.species[this.enemy.mon.sp]; const rr = esp.rarity;
+      if (this.enemy.mon.shiny || rr === 'epic' || rr === 'legendary' || rr === 'mythic') { audio.sfx('evolve'); const ep = this.posOf('e'); for (let i = 0; i < 4; i++) this.burst(ep.x, ep.y, RARITY[rr]?.color || '#ffd23f', 14, 90); }
+      await this.msg(rr === 'mythic' ? `✦✦ The MYTHIC ${esp.name}, ${esp.title}, descends! ✦✦` : rr === 'legendary' ? `★ The legendary ${esp.name}, ${esp.title}, appeared! ★` : this.enemy.mon.shiny ? `✦ A shimmering PRISMATIC ${esp.name} appeared! ✦` : rr === 'epic' ? `A wild EPIC ${esp.name} appeared!` : `A wild ${esp.name} appeared!`); }
     else {
       this.trainerX = view.w + 36; await tween(400, (k) => { this.trainerX = view.w + 36 - 128 * ease(k); });
       await this.msg(o.introMsg || `${o.trainerTitle} wants to battle!`);
@@ -343,8 +347,8 @@ class BattleScene {
     await this.msg(`${G.save.players[al.pi].name} readies a ${ITEMS[cubeId].name}! Answer to lock on!`, 1000);
     const res = await this.ask(al, 'Lock-on — answer to boost the capture rate');
     const hpF = e.mon.hp / this.hpMax(e.mon, true);
-    let p = (1 - 0.72 * hpF) * ITEMS[cubeId].rate * (res.correct ? (res.quick ? 2.1 : 1.7) : 0.55) * [0.9, 0.62, 0.4][sp.stage] * 0.55;
-    if (this.o.kind !== 'wild') p = 0; p = clamp(p, 0.04, 0.97);
+    let p = (1 - 0.72 * hpF) * ITEMS[cubeId].rate * (res.correct ? (res.quick ? 2.1 : 1.7) : 0.55) * [0.9, 0.62, 0.4][sp.stage] * 0.55 * (RARITY[sp.rarity]?.catch ?? 1);
+    if (this.o.kind !== 'wild') p = 0; p = clamp(p, sp.rarity === 'mythic' || sp.rarity === 'legendary' ? 0.02 : 0.04, 0.97);
     // throw animation
     const from = this.posOf('a' + k), to = this.posOf('e'); audio.sfx('throw');
     this.cube = { x: from.x, y: from.y, col: cubeId === 'cube' ? '#4cf0ff' : cubeId === 'cube2' ? '#ff4fd8' : '#ffd23f' };
@@ -391,7 +395,7 @@ const effTag = (e) => (e > 1 ? '<span class="eff up">▲ Super</span>' : e < 1 ?
 function itemIconSafe(id) { try { return G.icons(id); } catch { return ''; } }
 export function monRow(W, m) {
   const sp = W.species[m.sp]; const mh = maxHp(W, m); const pct = clamp(m.hp / mh, 0, 1) * 100;
-  return `<img class="mini" src="${G.mini(sp, m.era)}"><span class="mrn">${esc(monName(W, m))}</span><span class="lv">Lv${m.lvl}</span><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}<span class="minihp"><i class="${pct > 50 ? 'g' : pct > 20 ? 'y' : 'r'}" style="width:${pct}%"></i></span><span class="hpn">${Math.ceil(m.hp)}/${mh}</span>`;
+  return `<img class="mini" src="${G.mini(sp, lookOf(m))}"><span class="mrn">${esc(monName(W, m))}</span><span class="lv">Lv${m.lvl}</span><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}<span class="minihp"><i class="${pct > 50 ? 'g' : pct > 20 ? 'y' : 'r'}" style="width:${pct}%"></i></span><span class="hpn">${Math.ceil(m.hp)}/${mh}</span>`;
 }
 export async function evolveScene(scene, m, to) {
   const W = G.W; const from = W.species[m.sp], dest = W.species[to];
@@ -401,7 +405,7 @@ export async function evolveScene(scene, m, to) {
   G.scene = { update: (dt) => { cv.t += dt; }, render: (g) => {
     g.fillStyle = '#0d0820'; g.fillRect(0, 0, view.w, view.h);
     for (let i = 0; i < 40; i++) { const a = i * 0.7 + cv.t * 0.6, rr = 40 + (i * 13) % 120; g.fillStyle = i % 2 ? TYPES[dest.type].color : '#ffffff'; g.fillRect(view.w / 2 + Math.cos(a) * rr, view.h / 2 + Math.sin(a) * rr * 0.6, 2, 2); }
-    const sp = cv.form ? dest : from; const c = monsterCanvas(sp, false, m.era); const s = 2.2;
+    const sp = cv.form ? dest : from; const c = monsterCanvas(sp, false, lookOf(m)); const s = 2.2;
     g.drawImage(c, view.w / 2 - 28 * s, view.h / 2 + 50 - 56 * s, 56 * s, 56 * s);
     if (cv.white > 0) { g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(255,255,255,${cv.white})`; g.fillRect(0, 0, view.w, view.h); g.globalCompositeOperation = 'source-over'; }
   } };

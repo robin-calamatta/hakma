@@ -15,7 +15,9 @@ const TYPE_HUE = { logic: 212, cipher: 275, spark: 48, data: 140, structure: 26,
 // era: undefined (present), 'past' (ancient form) or 'future' (future form)
 export function monsterCanvas(sp, back = false, era = '') {
   const tcol = (TYPES[sp.type] || TYPES.logic).color;
-  const key = 'm3' + sp.uidKey + (back ? 'b' : 'f') + tcol + (era || '');
+  const key = 'm4' + sp.uidKey + (back ? 'b' : 'f') + tcol + (era || '');
+  const shiny = String(era || '').includes('*'); era = String(era || '').replace('*', '');
+  const regal = sp.rarity === 'legendary' || sp.rarity === 'mythic';
   if (cache.has(key)) return cache.get(key);
   const U = 1.5; // render at 1.5x the old resolution for finer detail (callers scale to their own size)
   const S = 84, M = new Uint8Array(S * S);
@@ -181,6 +183,8 @@ export function monsterCanvas(sp, back = false, era = '') {
   let second = hsl((hv + 25) % 360, 50, 34); // two-tone pattern colour
   if (era === 'past') { const sep = (h) => mix(mix(h, '#8a7a5a', 0.45), '#6a6a6a', 0.15); base = sep(base); accent = mix(accent, '#b08a3a', 0.6); belly = sep(belly); second = sep(second); }
   if (era === 'future') { base = mix(mix(base, '#c8d4ee', 0.45), '#7a86a8', 0.15); accent = mix(accent, '#3ff6ff', 0.7); belly = mix(belly, '#ffffff', 0.5); second = mix(second, '#202840', 0.6); }
+  if (shiny) { const hs = (h, d) => { const [a, b2, c2] = hexToHsl(h); return hsl((a + d + 360) % 360, Math.min(95, b2 + 15), Math.min(80, c2 + 6)); }; base = hs(base, 150); accent = mix(hs(accent, 150), '#ffe680', 0.35); belly = hs(belly, 150); second = hs(second, 150); }
+  if (sp.rarity === 'mythic') { base = mix(base, '#f6f0ff', 0.25); accent = mix(accent, '#ffd23f', 0.5); }
   const glow = mix(tcol, '#ffffff', 0.55);
   const iris = hsl((hv + 180) % 360, 70, 45);
   const col = { 14: '#6aa040', 1: base, 2: belly, 3: accent, 4: '#2a1f33', 5: '#ffffff', 6: '#1b1530', 7: era === 'future' ? '#5ff8ff' : glow, 8: shade(base, -0.25), 9: '#ffffff', 10: iris, 11: mix(base, '#ff6a8a', 0.55), 12: era === 'past' ? '#d8c08a' : '#f4ecd8', 13: second };
@@ -193,6 +197,15 @@ export function monsterCanvas(sp, back = false, era = '') {
     for (let x = 0; x < S; x += 4) for (let y = 0; y < S; y++) if (get(x, y) === 1 && (y * 5 + x) % 13 < 2) set(x, y, 7);
     if (!back && !head.inBody) { const vy = Math.round(head.y - k(1)); for (let y = vy - 1; y <= vy + 1; y++) for (let x = Math.round(S / 2 - head.rx * 0.85); x < S / 2 + head.rx * 0.85; x++) if (get(x, y)) set(x, y, 7); }
   }
+  // legendary / mythic regalia: a golden crown and a halo of light; shiny sparkles
+  if (regal && !back) {
+    const cx = S / 2, ty = Math.max(3, Math.round(head.y - head.ry - 2));
+    for (let i = -2; i <= 2; i++) { const x = Math.round(cx + i * head.rx * 0.38); const hgt = i === 0 ? 7 : Math.abs(i) === 1 ? 5 : 4; for (let y = ty - hgt; y <= ty; y++) if (!get(x, y)) set(x, y, 15); if (!get(x - 1, ty)) set(x - 1, ty, 15); if (!get(x + 1, ty)) set(x + 1, ty, 15); }
+    for (let x = Math.round(cx - head.rx * 0.9); x <= cx + head.rx * 0.9; x++) if (!get(x, ty + 1)) set(x, ty + 1, 15);
+    if (sp.rarity === 'mythic') { const hy = ty - 10; for (let a = 0; a < 6.28; a += 0.06) { const x = Math.round(cx + Math.cos(a) * head.rx * 1.1), y = Math.round(hy + Math.sin(a) * 2.5); if (y >= 0 && !get(x, y)) set(x, y, 16); } }
+  }
+  if (regal || shiny) { for (let i = 0; i < (regal ? 26 : 14); i++) { const x = r.int(2, S - 3), y = r.int(2, S - 3); if (!get(x, y) && !get(x + 1, y) && !get(x - 1, y)) { set(x, y, 16); if (i % 3 === 0) { set(x + 1, y, 16); set(x - 1, y, 16); set(x, y + 1, 16); set(x, y - 1, 16); } } } }
+  col[15] = '#ffd23f'; col[16] = shiny && !regal ? '#bff8ff' : '#fff6c0';
   // find each part's vertical extent for soft top-light gradient
   let top = S, bot = 0; for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (get(x, y)) { if (y < top) top = y; if (y > bot) bot = y; }
   const BAYER = [[0, 2], [3, 1]];
@@ -201,7 +214,7 @@ export function monsterCanvas(sp, back = false, era = '') {
   const put = (x, y, hex) => { const [R, G2, B] = hexToRgb(hex); const i = (y * S + x) * 4; img.data[i] = R; img.data[i + 1] = G2; img.data[i + 2] = B; img.data[i + 3] = 255; };
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const v = get(x, y);
-    if (!v) { const n = get(x + 1, y) || get(x - 1, y) || get(x, y + 1) || get(x, y - 1); if (n) put(x, y, n <= 3 || n === 8 ? mix(OUT, col[n], 0.18) : OUT); continue; }
+    if (!v) { const n = get(x + 1, y) || get(x - 1, y) || get(x, y + 1) || get(x, y - 1); if (n && n !== 16) put(x, y, n <= 3 || n === 8 ? mix(OUT, col[n], 0.18) : OUT); continue; }
     let hex = col[v];
     if (back && (v === 1 || v === 3 || v === 8)) hex = shade(hex, -0.08);
     if (v <= 3 || v === 8 || v === 13) {
@@ -359,7 +372,7 @@ export const BIOMES = {
   neon:    { g: '#1f2446', g2: '#1a1f3e', path: '#2e3566', path2: '#283060', tall: '#22c6a8', tree: '#3b4176', tree2: '#2a2f5a', trunk: '#4cf0ff', water: '#22d8ff', water2: '#9ff3ff', style: 'tower', flower: ['#ff4fd8', '#4cf0ff', '#ffe14c'], sky: ['#0d1030', '#3a1f6a'], hill: '#2a2f60', mood: 'neon' },
   interior:{ g: '#d8c09a', g2: '#c8ad84', path: '#b84a4a', path2: '#a03c3c', tall: '#3e9b31', tree: '#2f8a3a', tree2: '#1f6128', trunk: '#6b4a2b', water: '#3f95e6', water2: '#6cb6f2', style: 'round', flower: ['#ff5d73'], sky: ['#c8d8f0', '#ffffff'], hill: '#a0b0c0', mood: 'calm' },
 };
-export const T = { GRASS: 0, PATH: 1, TALL: 2, TREE: 3, WATER: 4, FLOWER: 5, FENCE: 6, SIGN: 7, DOOR: 8, BWALL: 9, ROOF: 10, FLOOR: 11, IWALL: 12, COUNTER: 13, PC: 14, BED: 15, DESK: 16, SHELF: 17, RUG: 18, MAT: 19, TABLE: 20, PLANT: 21, ROCK: 22, GYMFLOOR: 24, STATUE: 25, BARRIER: 26, STAIRS: 27, CUTTREE: 28, CRACKROCK: 29 };
+export const T = { GRASS: 0, PATH: 1, TALL: 2, TREE: 3, WATER: 4, FLOWER: 5, FENCE: 6, SIGN: 7, DOOR: 8, BWALL: 9, ROOF: 10, FLOOR: 11, IWALL: 12, COUNTER: 13, PC: 14, BED: 15, DESK: 16, SHELF: 17, RUG: 18, MAT: 19, TABLE: 20, PLANT: 21, ROCK: 22, BRIDGE: 23, GYMFLOOR: 24, STATUE: 25, BARRIER: 26, STAIRS: 27, CUTTREE: 28, CRACKROCK: 29 };
 export const SOLID = new Set([3, 4, 6, 7, 9, 10, 12, 13, 14, 15, 16, 17, 20, 21, 22, 25, 26, 28, 29]);
 
 export function tileAtlas(biomeKey, frame) {
@@ -399,6 +412,7 @@ export function tileAtlas(biomeKey, frame) {
       case T.BARRIER: px(ox, 0, '#3a3f5a', 16, 16); px(ox, 0, frame ? '#ff4fd880' : '#ff4fd850', 16, 16); px(ox, 7, '#ff9ff0', 16, 2); break;
       case T.CUTTREE: ground(ox); px(ox + 7, 10, B.trunk, 2, 5); px(ox + 3, 2, shade(B.tree, 0.15), 10, 9); px(ox + 5, 0, shade(B.tree, 0.15), 6, 3); px(ox + 4, 3, shade(B.tree, 0.35), 3, 2); px(ox + 9, 6, B.tree2, 4, 4); px(ox + 2, 5, B.tree, 1, 4); px(ox + 13, 5, B.tree2, 1, 4); px(ox + 6, 14, '#00000033', 5, 2); px(ox + 4, 8, '#ffffff55', 1, 1); px(ox + 11, 3, '#ffffff55', 1, 1); break;
       case T.CRACKROCK: ground(ox); px(ox + 1, 3, '#6a6a76', 14, 12); px(ox + 2, 2, '#8a8a96', 12, 4); px(ox + 3, 1, '#a0a0ac', 9, 3); px(ox + 4, 2, '#c4c4ce', 4, 2); px(ox + 1, 13, '#4a4a56', 14, 2); px(ox + 7, 3, '#2a2a36', 1, 4); px(ox + 6, 7, '#2a2a36', 1, 3); px(ox + 8, 7, '#2a2a36', 2, 1); px(ox + 9, 8, '#2a2a36', 1, 4); px(ox + 4, 9, '#2a2a36', 2, 1); break;
+      case T.BRIDGE: px(ox, 0, B.water || '#3a7ac8', 16, 16); px(ox, 1, '#6a4428', 16, 14); for (let i = 0; i < 4; i++) px(ox, 1 + i * 4, i % 2 ? '#9a6a3a' : '#b07a48', 16, 3); px(ox, 1, '#4a2e1c', 1, 14); px(ox + 15, 1, '#4a2e1c', 1, 14); break;
       case T.STAIRS: px(ox, 0, '#e0caa0', 16, 16); for (let i = 0; i < 4; i++) px(ox + 1, i * 4, i % 2 ? '#8a6a4a' : '#aa8a6a', 14, 4); break;
     }
   }
@@ -461,6 +475,20 @@ export function drawObject(g, kind, x, y, t) {
     for (let yy = -3; yy < 16; yy++) { const w2 = Math.max(1, Math.round((1 - Math.abs(yy - 6) / 10) * 4 + Math.sin(t * sp + yy * 0.7) * 1.2)); px(8 - w2, yy, OUT, w2 * 2, 1); px(8 - w2 + 1, yy, c1, Math.max(1, w2 * 2 - 2), 1); }
     px(7, 0 + Math.round(Math.sin(t * sp) * 3) + 3, c2, 2, 3);
     for (let i = 0; i < (due ? 6 : 2); i++) { const a = t * sp * 0.6 + i * 1.05; px(8 + Math.round(Math.cos(a) * 7), 6 + Math.round(Math.sin(a) * 9), c2, 1, 1); } }
+  if (kind === 'ride_wheel') { const cx = x + 8, cy = y - 22, R2 = 30; g.fillStyle = '#5a4a6a'; g.fillRect(cx - 14, cy, 3, 34); g.fillRect(cx + 11, cy, 3, 34); g.fillRect(cx - 18, y + 12, 36, 3);
+    g.strokeStyle = '#d8d0ff'; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, R2, 0, 7); g.stroke(); g.lineWidth = 1;
+    for (let i = 0; i < 8; i++) { const a = t * 0.4 + (i * Math.PI) / 4; const ex = cx + Math.cos(a) * R2, ey = cy + Math.sin(a) * R2; g.strokeStyle = '#a098c8'; g.beginPath(); g.moveTo(cx, cy); g.lineTo(ex, ey); g.stroke(); g.fillStyle = OUT; g.fillRect(ex - 4, ey - 1, 8, 7); g.fillStyle = ['#ff4fd8', '#4cf0ff', '#ffd23f', '#5fd068'][i % 4]; g.fillRect(ex - 3, ey, 6, 5); }
+    g.fillStyle = '#ffd23f'; g.fillRect(cx - 2, cy - 2, 4, 4); }
+  if (kind === 'ride_coaster') { const pts = []; for (let i = 0; i <= 40; i++) { const u = i / 40; pts.push([x + 8 + Math.cos(u * 6.283) * 34, y - 6 + Math.sin(u * 12.566) * 10 - Math.sin(u * 6.283) * 16]); }
+    g.strokeStyle = '#3a2a4a'; g.lineWidth = 1; for (const [a, b] of pts.filter((_, i) => i % 4 === 0)) { g.beginPath(); g.moveTo(a, b); g.lineTo(a, y + 14); g.stroke(); }
+    g.strokeStyle = '#ff5d73'; g.lineWidth = 3; g.beginPath(); pts.forEach(([a, b], i) => (i ? g.lineTo(a, b) : g.moveTo(a, b))); g.stroke(); g.lineWidth = 1;
+    for (let c = 0; c < 3; c++) { const u = ((t * 0.25 + c * 0.03) % 1); const a = x + 8 + Math.cos(u * 6.283) * 34, b = y - 6 + Math.sin(u * 12.566) * 10 - Math.sin(u * 6.283) * 16; g.fillStyle = OUT; g.fillRect(a - 4, b - 5, 8, 6); g.fillStyle = ['#4cf0ff', '#ffd23f', '#5fd068'][c]; g.fillRect(a - 3, b - 4, 6, 4); } }
+  if (kind === 'ride_carousel') { const cx = x + 8, cy = y - 4; g.fillStyle = OUT; g.beginPath(); g.moveTo(cx - 26, cy - 10); g.lineTo(cx, cy - 30); g.lineTo(cx + 26, cy - 10); g.fill(); for (let i = 0; i < 6; i++) { g.fillStyle = i % 2 ? '#ff4fd8' : '#ffffff'; g.beginPath(); g.moveTo(cx, cy - 28); g.lineTo(cx - 24 + i * 8, cy - 11); g.lineTo(cx - 16 + i * 8, cy - 11); g.fill(); }
+    g.fillStyle = '#ffd23f'; g.fillRect(cx - 26, cy - 11, 52, 3); g.fillStyle = '#b36bff'; g.fillRect(cx - 24, cy + 12, 48, 5);
+    for (let i = 0; i < 5; i++) { const a = t * 1.2 + (i * Math.PI * 2) / 5; const hx = cx + Math.cos(a) * 18; if (Math.sin(a) < -0.2) continue; const hy = cy + Math.sin(t * 3 + i) * 2; g.fillStyle = '#c8c8d8'; g.fillRect(hx, cy - 8, 1, 20); g.fillStyle = OUT; g.fillRect(hx - 5, hy, 10, 6); g.fillStyle = ['#ffffff', '#ffd23f', '#4cf0ff', '#ff7ab8', '#5fd068'][i]; g.fillRect(hx - 4, hy + 1, 8, 4); g.fillRect(hx + 3, hy - 2, 3, 3); } }
+  if (kind === 'ride_tent') { const cx = x + 8, by = y + 14; g.fillStyle = OUT; g.beginPath(); g.moveTo(cx - 30, by); g.lineTo(cx, by - 46); g.lineTo(cx + 30, by); g.fill(); for (let i = 0; i < 6; i++) { g.fillStyle = i % 2 ? '#d04040' : '#f4ecd8'; g.beginPath(); g.moveTo(cx, by - 44); g.lineTo(cx - 28 + i * 9.3, by - 1); g.lineTo(cx - 28 + (i + 1) * 9.3, by - 1); g.fill(); }
+    g.fillStyle = '#2a1a2a'; g.fillRect(cx - 5, by - 14, 10, 14); g.fillStyle = '#ffd23f'; g.fillRect(cx - 1, by - 54, 2, 10); g.fillStyle = `hsl(${(t * 90) % 360},90%,60%)`; g.fillRect(cx + 1, by - 54, 8, 5); }
+  if (kind === 'secretdoor') { const glint = (Math.sin(t * 2.2 + x) + 1) / 2; px(2, -4, '#1b2a1b', 12, 20); px(4, 2, '#0a0f0a', 8, 14); px(5, 4, '#050805', 6, 12); if (glint > 0.85) { px(7, 6, '#ffffffcc', 2, 2); px(6, 7, '#ffffff88', 4, 1); } }
   if (kind === 'lessons') { px(0, -4, OUT, 16, 15); px(1, -3, '#8a5a30', 14, 13); px(2, -2, '#1f4a32', 12, 10); for (let i = 0; i < 4; i++) px(3, i * 2, '#e8f0e0', 3 + ((i * 5) % 7), 1); px(3, 12, OUT, 2, 4); px(11, 12, OUT, 2, 4); }
   if (kind === 'cabinet') { const c = `hsl(${(t * 60 + x * 7) % 360},85%,60%)`; px(2, -6, OUT, 12, 22); px(3, -5, '#2a2050', 10, 20); px(3, -5, c, 10, 2); px(4, -1, OUT, 8, 6); px(5, 0, '#102030', 6, 4); px(5 + (Math.floor(t * 4) % 5), 1 + (Math.floor(t * 3) % 3), c, 1, 1); px(4, 7, '#504080', 8, 3); px(5, 8, '#ff4040', 1, 1); px(8, 8, '#40ff80', 1, 1); px(10, 8, '#ffd040', 1, 1); }
   if (kind === 'starter') { px(3, 5, OUT, 10, 9); px(4, 6, '#f0f0f8', 8, 7); px(4, 6, '#4cf0ff', 8, 3); px(7, 8, OUT, 2, 2); }

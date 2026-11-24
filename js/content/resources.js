@@ -12,6 +12,7 @@ const CTX = {
   'math-elem': 'mathematics', 'math-middle': 'mathematics', 'math-high': 'mathematics', 'ela-elem': 'English grammar', 'ela-high': 'English grammar',
   'science-elem': 'science', physics: 'physics', chemistry: 'chemistry', biology: 'biology',
   java: 'Java programming', french: 'French language', spanish: 'Spanish language', maltese: 'Maltese language', automotive: 'automobile engine', finance: 'personal finance Canada',
+  networking: 'computer networking', cybersec: 'computer security', hacking: 'penetration testing security', trading: 'stock market trading',
 };
 const SIMPLE_WIKI = new Set(['math-elem', 'ela-elem', 'science-elem']);
 // one specialist site per topic (opened via "first result")
@@ -24,6 +25,7 @@ const SITE = {
   physics: ['Khan Academy', 'khanacademy.org'], chemistry: ['LibreTexts', 'chem.libretexts.org'], biology: ['Khan Academy', 'khanacademy.org'],
   java: ['Baeldung', 'baeldung.com'], french: ['Lawless French', 'lawlessfrench.com'], spanish: ['SpanishDict', 'spanishdict.com'], maltese: ['Learn Maltese (Wiktionary)', 'en.wiktionary.org'],
   automotive: ['HowStuffWorks', 'auto.howstuffworks.com'], finance: ['Canada.ca', 'canada.ca'],
+  networking: ['Cloudflare Learning Center', 'cloudflare.com'], cybersec: ['Canadian Centre for Cyber Security', 'cyber.gc.ca'], hacking: ['OWASP', 'owasp.org'], trading: ['Investopedia', 'investopedia.com'],
 };
 const clean = (term) => term.replace(/[()]/g, ' ').replace(/\s+\/\s+/g, ' ').replace(/\s+/g, ' ').trim();
 const lucky = (q, site) => `https://duckduckgo.com/?q=${encodeURIComponent('\\' + q + (site ? ' site:' + site : ''))}`;

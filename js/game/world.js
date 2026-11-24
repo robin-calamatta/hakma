@@ -1,6 +1,6 @@
 // Overworld: tile movement for up to 4 local players, NPCs, warps, encounters, trainer sight, online peers.
 import { drawSeason, drawEraTint, season } from './time.js';
-import { G, PLAYER_COLORS } from './state.js';
+import { G, PLAYER_COLORS, lookOf } from './state.js';
 import { view } from '../core/view.js';
 import { getMap } from './maps.js';
 import { input } from '../core/input.js';
@@ -14,7 +14,7 @@ import { ui } from './ui.js';
 
 const TS = 16;
 const DX = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-const PEOPLE = new Set(['teacher', 'arcadehost', 'keeper', 'seasonal', 'npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
+const PEOPLE = new Set(['rideop', 'mascot', 'teacher', 'arcadehost', 'keeper', 'seasonal', 'npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
 
 // A player's look: their saved wardrobe choices (p.look), falling back to the original per-player defaults.
 export function playerPalette(p, i) {
@@ -83,6 +83,7 @@ export class World {
     if ((o.kind === 'item' || o.kind === 'note') && S.taken[o.key]) return false;
     if (o.kind === 'elite' && S.flags['elite' + o.idx]) return false;
     if (o.kind === 'starter' && S.flags.starter) return false;
+    if (o.kind === 'legend' && S.flags[o.key]) return false;
     return true;
   }
   objAt(x, y) { return this.objs.find((o) => this.visible(o) && o.x === x && o.y === y); }
@@ -241,12 +242,17 @@ export class World {
       return;
     }
     if (o.hidden) { const ph = (this.t * 0.8 + (o.x * 7 + o.y * 13) % 10 / 10) % 2.6; if (ph < 0.5) { const a = Math.sin(ph / 0.5 * Math.PI); g.fillStyle = `rgba(255,255,230,${a})`; const cx2 = Math.round(x) + 8, cy2 = Math.round(y) + 9; g.fillRect(cx2 - 1, cy2 - 3, 2, 6); g.fillRect(cx2 - 3, cy2 - 1, 6, 2); } return; }
+    if (o.kind === 'legend') { const sp = G.W.species[o.sp]; const img = monsterCanvas(sp, false); const bob = Math.sin(this.t * 2) * 2; const cx = Math.round(x) + 8, by = Math.round(y) + 14;
+      g.save(); g.globalAlpha = 0.25 + Math.sin(this.t * 3) * 0.1; g.fillStyle = sp.rarity === 'mythic' ? '#ff9ff0' : '#ffd23f'; g.beginPath(); g.ellipse(cx, by - 14, 20, 18, 0, 0, 7); g.fill(); g.restore();
+      g.fillStyle = '#5a5070'; g.fillRect(cx - 10, by - 2, 20, 5); g.fillStyle = '#8a80a8'; g.fillRect(cx - 9, by - 2, 18, 2);
+      g.drawImage(img, cx - 16, by - 34 + bob, 32, 32); return; }
+    if (o.kind === 'ride') { drawObject(g, 'ride_' + o.ride, Math.round(x), Math.round(y), this.t); return; }
     drawObject(g, o.kind === 'rift' && (G.save.echoes || []).some((e) => e.due <= Date.now()) ? 'riftdue' : o.kind, Math.round(x), Math.round(y), this.t);
     if (o.kind === 'station') { g.fillStyle = '#ffd23f'; g.font = '8px "Press Start 2P"'; g.textAlign = 'center'; g.fillText({ match: '≡', sequence: '#', speed: '!' }[o.game], Math.round(x) + 8, Math.round(y) - 1 + Math.sin(this.t * 3) * 1.5); }
   }
   drawPartner(g, f, m, x, y) {
     const sp = G.W.species[m.sp]; if (!sp) return;
-    const img = monsterCanvas(sp, f.dir === 'up', m.era);
+    const img = monsterCanvas(sp, f.dir === 'up', lookOf(m));
     const hop = f.moving ? -Math.abs(Math.sin(f.mt * Math.PI)) * 3 : Math.sin(this.t * 3) * 0.6;
     const S = 30;
     g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(x + 8, y + 13, 7, 2.5, 0, 0, 6.29); g.fill();

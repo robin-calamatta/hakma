@@ -22,6 +22,14 @@ export function getWorld(topicId) {
   return (worlds[topicId] = buildWorld(t));
 }
 
+export const RARITY = {
+  common: { name: 'Common', stars: 1, color: '#b8c0cc', stat: 1, catch: 1 },
+  uncommon: { name: 'Uncommon', stars: 2, color: '#5fd068', stat: 1.05, catch: 0.9 },
+  rare: { name: 'Rare', stars: 3, color: '#4aa8ff', stat: 1.1, catch: 0.75 },
+  epic: { name: 'Epic', stars: 4, color: '#b36bff', stat: 1.18, catch: 0.55 },
+  legendary: { name: 'Legendary', stars: 5, color: '#ffb020', stat: 1, catch: 0.3 },
+  mythic: { name: 'Mythic', stars: 6, color: '#ff5fd2', stat: 1, catch: 0.2 },
+};
 function buildWorld(t) {
   const EX = EXAMPLES[t.id] || {};
   const W = { topic: t, id: t.id, species: {}, lines: [], cities: [], qIndex: {}, terms: [], recent: [] };
@@ -53,6 +61,26 @@ function buildWorld(t) {
   W.starters = [0, 1, 2].filter((i) => W.lines[i]).map((i) => W.lines[i].ids[0]);
   const wild = W.lines.slice(3).filter((l) => !l.route);
   wild.forEach((l, k) => { l.route = 1 + Math.floor((k * 9) / Math.max(1, wild.length)); });
+  // ---- rarity tiers: common · uncommon · rare · epic (wild), legendary and mythic (hidden lairs only)
+  W.lines.forEach((l) => {
+    const x = rng(hash(t.id + l.names[0] + 'rarity'))(); l.rarity = l.li < 3 ? 'rare' : x < 0.48 ? 'common' : x < 0.76 ? 'uncommon' : x < 0.92 ? 'rare' : 'epic';
+    for (const id of l.ids) { const sp = W.species[id]; sp.rarity = l.rarity; const mul = RARITY[l.rarity].stat; for (const k in sp.base) sp.base[k] = Math.round(sp.base[k] * mul); }
+  });
+  W.legends = []; const lairCities = [1, 3, 5, 7]; const SUF = ['oros', 'arch', 'aeon', 'thrax', 'astra'];
+  const mkLegend = (name, type, title, concept, rarity, lair) => {
+    const li = W.lines.length; const id = li + '.0'; const r = rng(hash(t.id + name));
+    const M = genreMoves(genreOf(t), type) || MOVES[type] || MOVES.logic; const tot = rarity === 'mythic' ? 690 : 610;
+    const w = { hp: 0.9 + r() * 0.3, atk: 0.9 + r() * 0.3, def: 0.9 + r() * 0.3, spd: 0.9 + r() * 0.3 }; const sum = w.hp + w.atk + w.def + w.spd; const base = {}; for (const k in w) base[k] = Math.round((w[k] / sum) * tot);
+    const mv = [{ name: M[2][0], power: 60, type, kind: 'hit', lvl: 1 }, { name: M[1][1], power: 0, type: 'normal', kind: 'boost', lvl: 1 }, { name: M[2][1], power: 90, type, kind: 'hit', lvl: 1 }, { name: `${name.replace(/(ion|on|ix|ox|rax|or|ra|th|yx|ine|a|ex|os|is|e|rn|ke)$/, '')} ${rarity === 'mythic' ? 'Genesis' : 'Ascension'}`, power: 120, type, kind: 'hit', lvl: 1 }];
+    W.species[id] = { id, name, type, concept, li, stage: 0, stages: 1, base, moves: mv, evolveAt: null, next: null, seed: hash(t.id + name + 'v'), lineSeed: hash(t.id + ':' + name), uidKey: t.id + id, dex: `${title}. ${rarity === 'mythic' ? 'A mythic being said to embody all of ' + t.name + '.' : 'A legendary guardian that appears only to the most curious explorers.'}`, rarity, title, lair };
+    W.lines.push({ li, names: [name], type, concept, ids: [id], rarity, legend: true }); if (rarity === 'legendary') W.legends.push(id); return id;
+  };
+  const LEG = ['Aetherion', 'Solgaron', 'Nyxaroth', 'Valkyra', 'Thundrake', 'Glaciorn', 'Pyrolith', 'Seraphex', 'Chronyx', 'Umbralith', 'Zephyros', 'Astraeon', 'Vortexa', 'Lumenor', 'Obsidrax', 'Celestine', 'Tempestor', 'Nebularch', 'Quasarion', 'Titanox', 'Draconis', 'Aurorix']; const MYT = ['Omniversa', 'Genesix', 'Infinitor', 'Primordia', 'Aeonyx', 'Eternara']; const used2 = new Set(Object.values(W.species).map((x) => x.name));
+  lairCities.forEach((ci, k) => { const c = t.cities[ci]; const term = (c.terms[c.terms.length - 1] || [c.theme])[0]; let j = hash(t.id + 'leg' + k) % LEG.length; while (used2.has(LEG[j])) j = (j + 1) % LEG.length; const name = LEG[j]; used2.add(name);
+    mkLegend(name, c.type || 'logic', `Guardian of ${c.theme}`, term, 'legendary', k); });
+  W.mythic = mkLegend(MYT[hash(t.id + 'myth') % MYT.length], t.cities[7].type || 'flux', `Sovereign of ${t.name}`, t.name, 'mythic', 4);
+  // weighted wild pick: rarer lines appear less often (and more often in hidden places)
+  W.pickWild = (lines, R, boost = 0) => { const wts = lines.map((li) => { const rr = W.lines[li].rarity; return rr === 'common' ? 50 - boost * 25 : rr === 'uncommon' ? 28 : rr === 'rare' ? 14 + boost * 10 : rr === 'epic' ? 5 + boost * 8 : 1; }); let x = R() * wts.reduce((a, b) => a + Math.max(1, b), 0); for (let i = 0; i < lines.length; i++) { x -= Math.max(1, wts[i]); if (x <= 0) return lines[i]; } return lines[lines.length - 1]; };
   // ---- cities, terms, questions
   const D = DEEP[t.id] || []; W.meta = DEEP_META[t.id] || {};
   t.cities.forEach((c, ci) => {
@@ -101,7 +129,7 @@ function buildWorld(t) {
   W.makeTeam = (seed, lines, n, lvl) => { const r = rng(seed); const out = []; for (let i = 0; i < n; i++) { const li = r.pick(lines); const L = clamp(lvl - (n - 1 - i) * 2 + r.int(-1, 1), 2, 100); out.push({ sp: W.speciesFor(li, L), lvl: L }); } return out; };
   W.leaderTeam = (ci) => {
     const city = W.cities[ci]; const L = W.leaderLevel(ci); const n = Math.min(2 + Math.floor(ci / 2), 5);
-    let lines = W.lines.filter((l) => l.type === city.type && l.li >= 3).map((l) => l.li);
+    let lines = W.lines.filter((l) => l.type === city.type && l.li >= 3 && !l.legend).map((l) => l.li);
     const rl = W.routeLines(ci + 1); if (lines.length < 2) lines = lines.concat(rl);
     return W.makeTeam(hash(t.id + 'leader' + ci), lines, n, L);
   };

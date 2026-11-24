@@ -1,8 +1,8 @@
 // Start menu and all sub-screens.
 import { lessonBoard, cabinet, CABINETS } from './arcade.js';
-import { levelFor, LEVEL_NAME } from './content.js';
+import { levelFor, LEVEL_NAME, RARITY } from './content.js';
 import { chronoLog, echoBattle, timeTick } from './time.js';
-import { dueEchoes } from './state.js';
+import { dueEchoes, lookOf } from './state.js';
 import { G, ITEMS, stats, maxHp, movesOf, monName, xpToNext, gainXp, healMon, newPlayer, makeMon, addMon, badgeCount, chapter, writeSlot, saveSettings, recordAnswer, addCodex } from './state.js';
 import { ui, fmt } from './ui.js';
 import { audio } from '../core/audio.js';
@@ -13,7 +13,7 @@ import { questList, objective } from './events.js';
 import { monRow, evolveScene } from './battle.js';
 import { checkEvolve, evolve, FIELD_SKILLS, tmMove } from './state.js';
 import { BIOMES } from '../core/sprites.js';
-import { biomeOf, worldSeed } from './maps.js';
+import { biomeOf, worldSeed, getMap, routeLayout, LAIR_ROUTE, zoneInfo } from './maps.js';
 import { learnMore, externalOn } from './learn.js';
 import { hash, rng } from '../core/rng.js';
 import { itemIcon } from '../core/sprites.js';
@@ -65,7 +65,7 @@ async function monMenu(p, k) {
 export async function summary(m, readonly) {
   const w = W(); const sp = w.species[m.sp]; const st = stats(w, m); const mv = movesOf(w, m); const all = sp.moves.concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
   const line = w.lines[sp.li]; const term = w.terms.find((t) => t.id === sp.termId) || w.terms.find((t) => t.term.toLowerCase() === sp.concept.toLowerCase());
-  await ui.panel({ title: esc(monName(w, m)), wide: true, cls: 'summary', render: () => `<div class="pv"><img class="big" src="${G.mini(sp, m.era)}"><div>
+  await ui.panel({ title: esc(monName(w, m)), wide: true, cls: 'summary', render: () => `<div class="pv"><img class="big" src="${G.mini(sp, lookOf(m))}"><div><p class="rarline" style="color:${RARITY[sp.rarity]?.color}">${'★'.repeat(RARITY[sp.rarity]?.stars || 1)} ${RARITY[sp.rarity]?.name || ''}${m.shiny ? ' · ✦ Prismatic' : ''}${sp.title ? ` · ${esc(sp.title)}` : ''}</p>
     <h3>${esc(sp.name)} <span class="lv">Lv${m.lvl}</span></h3><p><span class="type t-${sp.type}">${TYPES[sp.type].name}</span> <span class="dim">Stage ${sp.stage + 1}/${sp.stages}${sp.evolveAt ? ` · evolves at Lv ${sp.evolveAt}` : ''}</span></p>
     <p>Embodies: <b>${esc(sp.concept)}</b>${term ? `<br><span class="dim">${esc(term.def)}</span>` : sp.dex ? `<br><span class="dim">${esc(sp.dex)}</span>` : ''}</p>${term ? `<p class="dim">Chapter ${term.ci + 1}: ${esc(w.cities[term.ci].theme)}</p>` : ''}
     <p class="dim">Strong vs ${TYPES[beats(sp.type)].name} · Weak vs ${TYPES[weakTo(sp.type)].name} · Line: ${line.names.map(esc).join(' → ')}</p>
@@ -77,47 +77,145 @@ export async function summary(m, readonly) {
 }
 
 // ------------------------------------------------------------ region map + Soar
+const MAPW = 360, MAPH = 880;
 function regionNodes() {
-  const w = W(); const r = rng(hash(w.id + worldSeed() + 'regionmap')); const nodes = [];
-  let x = 0.5;
-  nodes.push({ id: 'hometown', name: 'Origin Town', x, y: 0.93, biome: biomeOf(w, 0), home: true });
-  for (let i = 0; i < 8; i++) { x = Math.max(0.16, Math.min(0.84, x + (r() - 0.5) * 0.5)); nodes.push({ id: 'city' + i, ci: i, name: w.cities[i].name, theme: w.cities[i].theme, x, y: 0.82 - i * 0.095, biome: biomeOf(w, i) }); }
-  nodes.push({ id: 'summit', name: 'Mastery Summit', x: 0.5, y: 0.05, biome: 'crystal', summit: true });
+  const w = W(); const r = rng(hash(w.id + worldSeed() + 'regionmap2')); const nodes = []; let x = 180;
+  const Y = (i) => MAPH - 46 - i * 88;
+  nodes.push({ id: 'hometown', name: 'Origin Town', x, y: Y(0), biome: biomeOf(w, 0), home: true, idx: 0 });
+  for (let i = 0; i < 8; i++) { x = Math.max(95, Math.min(265, x + (r() - 0.5) * 150)); nodes.push({ id: 'city' + i, ci: i, name: w.cities[i].name, theme: w.cities[i].theme, x, y: Y(i + 1), biome: biomeOf(w, i), idx: i + 1 }); }
+  nodes.push({ id: 'summit', name: 'Mastery Summit', x: 180, y: Y(9) + 8, biome: 'crystal', summit: true, idx: 9 });
   return nodes;
 }
-function whereNow() { const id = S().map; let m; if ((m = id.match(/^city(\d)/))) return 'city' + m[1]; if ((m = id.match(/^route(\d)/))) return 'route' + m[1]; if (id === 'summit') return 'summit'; return 'hometown'; }
-function drawRegion(cv, sel) {
-  const g = cv.getContext('2d'); const Wd = cv.width, Ht = cv.height; const nodes = regionNodes(); const here = whereNow(); const s = S();
-  const P = (n) => [n.x * Wd, n.y * Ht];
-  g.fillStyle = '#16304a'; g.fillRect(0, 0, Wd, Ht);
-  const rr = rng(hash(W().id + worldSeed() + 'coast')); for (let i = 0; i < 260; i++) { g.fillStyle = 'rgba(120,180,220,' + (0.05 + rr() * 0.08) + ')'; g.fillRect(rr() * Wd, rr() * Ht, 2, 1); }
-  // land: a blob around each node, coloured by that place's biome
-  nodes.forEach((n) => { const [x, y] = P(n); const B = BIOMES[n.biome] || BIOMES.meadow; for (let k = 0; k < 7; k++) { g.fillStyle = k % 2 ? B.g : B.g2; g.beginPath(); g.ellipse(x + (k - 3) * 7, y + ((k * 5) % 9) - 4, 34 - k, 22 - (k % 3) * 2, 0, 0, 7); g.fill(); } });
-  // routes
-  g.setLineDash([4, 3]); g.lineWidth = 3;
-  for (let i = 1; i < nodes.length; i++) { const [a, b] = [P(nodes[i - 1]), P(nodes[i])]; const r = i; const known = r === 1 || s.flags['visit' + (i - 2)]; g.strokeStyle = known ? '#f4e2a8' : 'rgba(244,226,168,0.3)'; g.beginPath(); g.moveTo(a[0], a[1]); g.quadraticCurveTo((a[0] + b[0]) / 2 + (i % 2 ? 18 : -18), (a[1] + b[1]) / 2, b[0], b[1]); g.stroke(); g.setLineDash([]); g.fillStyle = '#ffffffaa'; g.font = '7px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('R' + r, (a[0] + b[0]) / 2 + (i % 2 ? 22 : -22), (a[1] + b[1]) / 2); g.setLineDash([4, 3]); }
-  g.setLineDash([]);
-  nodes.forEach((n) => {
-    const [x, y] = P(n); const visited = n.home || (n.summit ? s.badges.every(Boolean) : s.flags['visit' + n.ci]); const badge = n.ci !== undefined && s.badges[n.ci];
-    g.fillStyle = '#14101c'; g.fillRect(x - 7, y - 7, 14, 14); g.fillStyle = visited ? (n.summit ? '#b36bff' : '#ff5d73') : '#555a6a'; g.fillRect(x - 5, y - 5, 10, 10);
-    if (badge) { g.fillStyle = '#ffd23f'; g.fillRect(x + 4, y - 8, 4, 4); }
-    if (n.id === sel) { g.strokeStyle = '#ffe14c'; g.lineWidth = 2; g.strokeRect(x - 10, y - 10, 20, 20); }
-    g.font = '8px "VT323"'; g.textAlign = x > Wd * 0.6 ? 'right' : 'left'; const tx = x > Wd * 0.6 ? x - 12 : x + 12;
-    g.fillStyle = '#000000aa'; g.fillText(visited ? n.name : '???', tx + 1, y + 4); g.fillStyle = visited ? '#ffffff' : '#9a9aaa'; g.fillText(visited ? n.name : '???', tx, y + 3);
-    if (here === n.id) { g.fillStyle = '#4cf0ff'; g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x - 5, y - 17); g.lineTo(x + 5, y - 17); g.fill(); }
-  });
-  const m = here.match(/^route(\d)/); if (m) { const i = +m[1]; const [a, b] = [P(nodes[i - 1]), P(nodes[i])]; g.fillStyle = '#4cf0ff'; g.beginPath(); g.arc((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 5, 0, 7); g.fill(); }
-  g.fillStyle = '#ffffffcc'; g.font = '8px "Press Start 2P"'; g.textAlign = 'left'; g.fillText(W().region.toUpperCase(), 8, 14);
+function whereNow() { const id = S().map; let m; if ((m = id.match(/^city(\d)/))) return 'city' + m[1]; if ((m = id.match(/^(route\d|grove\d|lair\d|garden\d|zone\d)/))) return m[1]; if (id === 'summit' || id === 'sanctum') return id; if (id.startsWith('era_')) return 'gate'; return 'hometown'; }
+// the road for route r, following the real winding path of that route's map
+function routePoints(nodes, r) {
+  const a = nodes[r - 1], b = nodes[r]; const { w, h, px } = routeLayout(W(), r); const mean = px.reduce((s2, v) => s2 + v, 0) / px.length; const pts = [];
+  for (let k = 0; k <= 24; k++) { const t = k / 24; const yy = Math.round((1 - t) * (h - 1)); const dev = (px[yy] - mean) / w; pts.push([a.x + (b.x - a.x) * t + dev * 110 * Math.sin(Math.PI * t), a.y + (b.y - a.y) * t]); }
+  return pts;
+}
+const along = (pts, f) => { const i = Math.min(pts.length - 1, Math.max(0, Math.round(f * (pts.length - 1)))); return pts[i]; };
+function secretsOnMap(nodes) {
+  const w = W(); const out = [];
+  for (let r = 1; r <= 9; r++) {
+    const m = getMap(w, 'route' + r); const pts = routePoints(nodes, r);
+    const gw = m.warps.find((q) => String(q.to).startsWith('grove'));
+    if (gw) { const [x, y] = along(pts, (1 - gw.y / m.h) * 0.6); out.push({ id: 'grove' + r, kind: 'grove', name: 'Grove', x: x + (m.groveSide === 'west' ? -38 : 38), y, from: [x, y], route: r }); }
+    if (m.lairDoor) { const k = LAIR_ROUTE.indexOf(r); const [x, y] = along(pts, (1 - m.lairDoor.y / m.h) * 0.6); out.push({ id: 'lair' + k, kind: 'lair', name: 'Lair', x: x + (m.lairDoor.side === 'west' ? -44 : 44), y, from: [x, y], route: r }); }
+  }
+  nodes.filter((n) => n.ci !== undefined).forEach((n) => out.push({ id: 'garden' + n.ci, kind: 'garden', name: 'Garden', x: n.x + (n.x < 180 ? -40 : 40), y: n.y + 16, from: [n.x, n.y], city: n.ci }));
+  const home = nodes[0]; out.push({ id: 'sanctum', kind: 'sanctum', name: 'Sanctum', x: home.x - 58, y: home.y + 20, from: [home.x, home.y] });
+  // keep icons from piling on top of each other or on towns
+  for (let pass = 0; pass < 4; pass++) for (let i = 0; i < out.length; i++) { const a2 = out[i];
+    for (const b2 of out.slice(0, i)) if (Math.abs(a2.x - b2.x) < 30 && Math.abs(a2.y - b2.y) < 22) a2.y = b2.y + 22;
+    for (const n of nodes) if (Math.abs(a2.x - n.x) < 26 && Math.abs(a2.y - n.y) < 20) a2.x += a2.x < n.x ? -16 : 16;
+    for (let r = 1; r <= 9; r++) { const [zx, zy] = along(routePoints(nodes, r), ZONE_F); if (Math.abs(a2.x - zx) < 60 && Math.abs(a2.y - zy) < 16) a2.y = zy + (a2.y < zy ? -18 : 18); }
+    a2.x = Math.max(14, Math.min(MAPW - 14, a2.x)); }
+  return out;
+}
+function drawRegion(cv) {
+  const g = cv.getContext('2d'); const Z = 2; cv.width = MAPW * Z; cv.height = MAPH * Z; g.scale(Z, Z); g.imageSmoothingEnabled = false;
+  const nodes = regionNodes(); const here = whereNow(); const s = S(); const w = W(); const rr = rng(hash(w.id + worldSeed() + 'deco'));
+  const visited = (n) => n.home || (n.summit ? s.badges.every(Boolean) : s.flags['visit' + n.ci]);
+  const routeKnown = (r) => r === 1 || s.flags['visit' + (r - 2)];
+  // sea
+  g.fillStyle = '#17466b'; g.fillRect(0, 0, MAPW, MAPH);
+  for (let i = 0; i < 340; i++) { const x = rr() * MAPW, y = rr() * MAPH; g.fillStyle = `rgba(160,210,240,${0.08 + rr() * 0.12})`; g.fillRect(x, y, 3 + rr() * 4, 1); }
+  // island outline that hugs the whole chain of towns and roads
+  const allPts = []; for (let r = 1; r <= 9; r++) allPts.push(...routePoints(nodes, r));
+  const left = [], right = []; for (let y = 10; y <= MAPH - 8; y += 10) { const near = allPts.filter((p) => Math.abs(p[1] - y) < 40); const xs = near.length ? near.map((p) => p[0]) : [180]; const n1 = Math.sin(y * 0.05) * 8 + Math.sin(y * 0.13 + 1) * 5; left.push([Math.max(8, Math.min(...xs) - 70 + n1), y]); right.push([Math.min(MAPW - 8, Math.max(...xs) + 70 - n1), y]); }
+  const land = new Path2D(); land.moveTo(left[0][0], left[0][1]); for (const p of left) land.lineTo(p[0], p[1]); for (const p of right.slice().reverse()) land.lineTo(p[0], p[1]); land.closePath();
+  g.save(); g.strokeStyle = '#e8d49a'; g.lineWidth = 7; g.stroke(land); g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 12; g.globalAlpha = 0.4; g.stroke(land); g.restore();
+  // biome bands, clipped to the island
+  g.save(); g.clip(land);
+  nodes.forEach((n, i) => { const top = i === nodes.length - 1 ? 0 : (n.y + nodes[i + 1].y) / 2; const bot = i === 0 ? MAPH : (n.y + nodes[i - 1].y) / 2; const B = BIOMES[n.biome] || BIOMES.meadow; g.fillStyle = B.g; g.fillRect(0, top, MAPW, bot - top); g.fillStyle = B.g2; for (let k = 0; k < 60; k++) g.fillRect(rr() * MAPW, top + rr() * (bot - top), 2, 2);
+    // decorations by biome
+    for (let k = 0; k < 9; k++) { const x = 20 + rr() * (MAPW - 40), y = top + 8 + rr() * (bot - top - 16); if (allPts.some((p) => Math.abs(p[0] - x) < 22 && Math.abs(p[1] - y) < 14) || Math.hypot(x - n.x, y - n.y) < 34) continue; decorate(g, n.biome, x, y); } });
+  g.restore();
+  // roads
+  for (let r = 1; r <= 9; r++) { const pts = routePoints(nodes, r); const known = routeKnown(r);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    g.strokeStyle = '#3a2a1a'; g.lineWidth = 7; g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
+    g.strokeStyle = known ? '#e8c987' : '#8a7a62'; g.lineWidth = 4; g.stroke();
+    if (known) { g.setLineDash([3, 4]); g.strokeStyle = '#fff6d8'; g.lineWidth = 1; g.stroke(); g.setLineDash([]); }
+    const [mx2, my2] = along(pts, 0.36); g.fillStyle = '#1b1530'; g.fillRect(mx2 - 9, my2 - 6, 18, 11); g.fillStyle = known ? '#ffd23f' : '#777'; g.font = '7px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('R' + r, mx2, my2 + 3); }
+  // in-between zones sit on every road, just before the next town
+  for (let r = 1; r <= 9; r++) { const Zi = zoneInfo(r); const [zx, zy] = along(routePoints(nodes, r), ZONE_F); const seenZ = s.flags['zvisit' + r];
+    if (!seenZ && !routeKnown(r)) continue;
+    zoneIcon(g, Zi, zx, zy, !!seenZ); g.font = '6px "Press Start 2P"'; g.textAlign = zx < 180 ? 'right' : 'left'; const lx = zx < 180 ? zx - 13 : zx + 13; const nm2 = seenZ ? Zi.name : '???';
+    const tw = g.measureText(nm2).width; g.fillStyle = 'rgba(20,16,28,0.7)'; g.fillRect(zx < 180 ? lx - tw - 2 : lx - 2, zy - 6, tw + 4, 9); g.fillStyle = seenZ ? '#c8ffd8' : '#aaa'; g.fillText(nm2, lx, zy + 1); }
+  // hidden places: dotted trails + icons (shown once discovered, otherwise a faint "?")
+  const secrets = secretsOnMap(nodes); let found = 0;
+  for (const sc of secrets) { const f = !!s.flags['found_' + sc.id]; if (f) found++;
+    const show = f || (sc.route ? routeKnown(sc.route) : sc.city !== undefined ? s.flags['visit' + sc.city] : true);
+    if (!show) continue;
+    g.setLineDash([2, 3]); g.strokeStyle = f ? '#fff6d8' : 'rgba(255,255,255,0.35)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(sc.from[0], sc.from[1]); g.lineTo(sc.x, sc.y); g.stroke(); g.setLineDash([]);
+    if (!f) { g.fillStyle = 'rgba(20,16,28,0.7)'; g.beginPath(); g.arc(sc.x, sc.y, 6, 0, 7); g.fill(); g.fillStyle = 'rgba(255,255,255,0.7)'; g.font = '7px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('?', sc.x + 0.5, sc.y + 3.5); continue; }
+    secretIcon(g, sc.kind, sc.x, sc.y);
+    g.font = '6px "Press Start 2P"'; g.textAlign = 'center'; g.fillStyle = '#000a'; g.fillText(sc.name, sc.x + 1, sc.y + 15); g.fillStyle = '#fff'; g.fillText(sc.name, sc.x, sc.y + 14); }
+  // Chrono Gate beside Origin Town
+  const home = nodes[0]; if (badgeCount(s) >= 4) { const gx = home.x + 48, gy = home.y + 10; g.setLineDash([2, 3]); g.strokeStyle = '#d8c8ff'; g.beginPath(); g.moveTo(home.x, home.y); g.lineTo(gx, gy); g.stroke(); g.setLineDash([]); secretIcon(g, 'gate', gx, gy); g.font = '6px "Press Start 2P"'; g.fillStyle = '#fff'; g.textAlign = 'center'; g.fillText('Chrono Gate', gx, gy + 14); }
+  // towns
+  nodes.forEach((n) => { const v = visited(n); townIcon(g, n, v, n.ci !== undefined && s.badges[n.ci]);
+    g.font = '8px "Press Start 2P"'; const label = v ? n.name : '???'; const right2 = n.x < 180; g.textAlign = right2 ? 'left' : 'right'; const tx = right2 ? n.x + 18 : n.x - 18;
+    const tw = g.measureText(label).width; g.fillStyle = 'rgba(20,16,28,0.75)'; g.fillRect(right2 ? tx - 3 : tx - tw - 3, n.y - 9, tw + 6, 12); g.fillStyle = v ? '#ffffff' : '#9a9aaa'; g.fillText(label, tx, n.y);
+    if (v && n.theme) { g.font = '6px "Press Start 2P"'; g.fillStyle = '#ffe9a8'; g.fillText(n.theme.length > 26 ? n.theme.slice(0, 25) + '…' : n.theme, tx, n.y + 10); } });
+  // you are here
+  const t = (performance.now() / 300) % (Math.PI * 2); let hx = null, hy = null; const hm = here.match(/^route(\d)$/);
+  if (hm) { const m = G.world.map; const f = (1 - (G.world.lp[0].y / m.h)) * (ZONE_F - 0.06); [hx, hy] = along(routePoints(nodes, +hm[1]), f); }
+  const zm = here.match(/^zone(\d)$/); if (zm) { [hx, hy] = along(routePoints(nodes, +zm[1]), ZONE_F); hy -= 8; }
+  else { const n = nodes.find((q) => q.id === here); const sc = secrets.find((q) => q.id === here); if (n) { hx = n.x; hy = n.y - 12; } else if (sc) { hx = sc.x; hy = sc.y - 8; } else if (here === 'gate') { hx = home.x + 48; hy = home.y; } }
+  if (hy !== null) cv.dataset.hy = hy;
+  if (hx !== null) { g.fillStyle = '#4cf0ff'; g.beginPath(); g.moveTo(hx, hy - 2 + Math.sin(t) * 2); g.lineTo(hx - 6, hy - 12 + Math.sin(t) * 2); g.lineTo(hx + 6, hy - 12 + Math.sin(t) * 2); g.closePath(); g.fill(); g.strokeStyle = '#003a44'; g.lineWidth = 1; g.stroke(); }
+  // title + compass + legend
+  g.fillStyle = 'rgba(20,16,28,0.8)'; g.fillRect(6, 6, 150, 30); g.fillStyle = '#ffd23f'; g.font = '8px "Press Start 2P"'; g.textAlign = 'left'; g.fillText(w.region.toUpperCase(), 12, 19); g.fillStyle = '#cfc8e8'; g.font = '6px "Press Start 2P"'; g.fillText(`Secrets found: ${found}/${secrets.length}`, 12, 30);
+  const cx = MAPW - 24, cy = 26; g.fillStyle = 'rgba(20,16,28,0.8)'; g.beginPath(); g.arc(cx, cy, 15, 0, 7); g.fill(); g.fillStyle = '#ff5d73'; g.beginPath(); g.moveTo(cx, cy - 12); g.lineTo(cx - 4, cy); g.lineTo(cx + 4, cy); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(cx, cy + 12); g.lineTo(cx - 4, cy); g.lineTo(cx + 4, cy); g.fill(); g.font = '6px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('N', cx, cy - 15 + 22 - 22 + 0);
+}
+function decorate(g, biome, x, y) {
+  if (biome === 'forest' || biome === 'meadow') { g.fillStyle = '#1f5a2a'; g.beginPath(); g.moveTo(x, y - 7); g.lineTo(x - 5, y + 3); g.lineTo(x + 5, y + 3); g.fill(); g.fillStyle = '#2f7a3a'; g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x - 4, y - 1); g.lineTo(x + 4, y - 1); g.fill(); g.fillStyle = '#5a3a1a'; g.fillRect(x - 1, y + 3, 2, 2); }
+  else if (biome === 'snow' || biome === 'volcano') { g.fillStyle = biome === 'snow' ? '#7a8aa0' : '#5a3a30'; g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x - 9, y + 4); g.lineTo(x + 9, y + 4); g.fill(); g.fillStyle = biome === 'snow' ? '#ffffff' : '#ff6a2a'; g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x - 3, y - 4); g.lineTo(x + 3, y - 4); g.fill(); }
+  else if (biome === 'desert') { g.strokeStyle = '#c8a050'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y + 4, 7, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+  else if (biome === 'coast') { g.fillStyle = '#7a5a2a'; g.fillRect(x, y - 6, 2, 9); g.fillStyle = '#2f9a5a'; g.fillRect(x - 4, y - 8, 10, 2); g.fillRect(x - 2, y - 10, 6, 2); }
+  else if (biome === 'crystal') { g.fillStyle = '#b8a8ff'; g.beginPath(); g.moveTo(x, y - 8); g.lineTo(x - 3, y + 2); g.lineTo(x + 3, y + 2); g.fill(); g.fillStyle = '#e8e0ff'; g.fillRect(x - 1, y - 5, 1, 5); }
+  else if (biome === 'neon') { g.fillStyle = ['#ff4fd8', '#4cf0ff', '#ffd23f'][Math.abs(Math.round(x + y)) % 3]; g.fillRect(x - 3, y - 6, 6, 10); g.fillStyle = '#1b1530'; g.fillRect(x - 2, y - 4, 1, 1); g.fillRect(x + 1, y - 1, 1, 1); }
+}
+function townIcon(g, n, v, badge) {
+  const { x, y } = n;
+  if (n.summit) { g.fillStyle = v ? '#d8d0ff' : '#666a7a'; g.beginPath(); g.moveTo(x, y - 14); g.lineTo(x - 16, y + 8); g.lineTo(x + 16, y + 8); g.fill(); g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(x, y - 14); g.lineTo(x - 5, y - 6); g.lineTo(x + 5, y - 6); g.fill(); g.fillStyle = '#ff5d73'; g.fillRect(x, y - 22, 1, 8); g.fillRect(x + 1, y - 22, 6, 4); return; }
+  g.fillStyle = '#1b1530'; g.fillRect(x - 15, y - 11, 30, 21); g.fillStyle = v ? (n.home ? '#c9e8a0' : '#e8dcc0') : '#6a6a78'; g.fillRect(x - 13, y - 9, 26, 17);
+  const roofs = v ? ['#d04848', '#3a6ad0', '#3aa060'] : ['#555', '#555', '#555'];
+  [[-9, 0], [-1, -3], [7, 1]].forEach(([dx, dy], k) => { g.fillStyle = roofs[k]; g.beginPath(); g.moveTo(x + dx - 4, y + dy); g.lineTo(x + dx, y + dy - 5); g.lineTo(x + dx + 4, y + dy); g.fill(); g.fillStyle = v ? '#fff6e0' : '#888'; g.fillRect(x + dx - 3, y + dy, 6, 5); g.fillStyle = '#3a2a1a'; g.fillRect(x + dx - 1, y + dy + 2, 2, 3); });
+  if (n.home) { g.fillStyle = '#ff5d73'; g.font = '7px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('♥', x, y - 12); }
+  if (badge) { g.fillStyle = '#ffd23f'; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr2 = i % 2 ? 2.5 : 6; g.lineTo(x + 15 + Math.cos(a) * rr2, y - 11 + Math.sin(a) * rr2); } g.fill(); g.strokeStyle = '#7a5a00'; g.lineWidth = 0.8; g.stroke(); }
+}
+const ZONE_F = 0.68;
+function zoneIcon(g, Z, x, y, seen) {
+  g.fillStyle = '#1b1530'; g.fillRect(x - 10, y - 10, 20, 20); g.fillStyle = seen ? '#2a3a2a' : '#555a6a'; g.fillRect(x - 9, y - 9, 18, 18);
+  if (!seen) { g.fillStyle = '#ddd'; g.font = '8px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('?', x + 1, y + 4); return; }
+  const k = Z.icon;
+  if (k === 'forest') { g.fillStyle = Z.night ? '#2a4a5a' : '#2f8a3a'; for (const [dx, dy] of [[-4, 2], [4, 2], [0, -3]]) { g.beginPath(); g.moveTo(x + dx, y + dy - 6); g.lineTo(x + dx - 4, y + dy + 3); g.lineTo(x + dx + 4, y + dy + 3); g.fill(); } }
+  if (k === 'maze') { g.fillStyle = Z.crystal ? '#b8a8ff' : '#3aa050'; g.fillRect(x - 8, y - 8, 16, 2); g.fillRect(x - 8, y - 8, 2, 16); g.fillRect(x + 6, y - 8, 2, 12); g.fillRect(x - 8, y + 6, 12, 2); g.fillRect(x - 4, y - 4, 2, 8); g.fillRect(x - 4, y - 4, 8, 2); g.fillRect(x + 2, y - 4, 2, 6); g.fillStyle = '#ffd23f'; g.fillRect(x - 1, y, 2, 2); }
+  if (k === 'lake' || k === 'sky') { g.fillStyle = k === 'sky' ? '#e8f0ff' : '#3a7ac8'; g.fillRect(x - 8, y - 8, 16, 16); g.fillStyle = '#9a6a3a'; g.fillRect(x - 8, y - 1, 16, 3); g.fillRect(x - 1, y - 8, 3, 16); }
+  if (k === 'cave') { g.fillStyle = '#8a8098'; g.beginPath(); g.arc(x, y + 6, 9, Math.PI, 0); g.fill(); g.fillStyle = '#0a0812'; g.beginPath(); g.arc(x, y + 6, 4.5, Math.PI, 0); g.fill(); }
+  if (k === 'ruins') { g.fillStyle = '#d8c08a'; g.fillRect(x - 7, y - 6, 3, 12); g.fillRect(x + 4, y - 6, 3, 12); g.fillRect(x - 8, y - 8, 16, 3); g.fillRect(x - 1, y, 3, 6); }
+  if (k === 'park') { const t = performance.now() / 800; g.strokeStyle = '#ffd23f'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y - 1, 7, 0, 7); g.stroke(); for (let i = 0; i < 6; i++) { const a = t + i; g.fillStyle = ['#ff4fd8', '#4cf0ff', '#5fd068'][i % 3]; g.fillRect(x + Math.cos(a) * 7 - 1, y - 1 + Math.sin(a) * 7 - 1, 3, 3); } g.fillStyle = '#b36bff'; g.fillRect(x - 2, y + 4, 4, 5); }
+}
+function secretIcon(g, kind, x, y) {
+  g.fillStyle = 'rgba(20,16,28,0.8)'; g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill();
+  if (kind === 'grove') { g.fillStyle = '#2f9a4a'; for (const [dx, dy] of [[-3, 1], [3, 1], [0, -3]]) { g.beginPath(); g.arc(x + dx, y + dy, 3.5, 0, 7); g.fill(); } }
+  if (kind === 'lair') { g.fillStyle = '#8a8098'; g.beginPath(); g.arc(x, y + 3, 6, Math.PI, 0); g.fill(); g.fillStyle = '#0a0812'; g.beginPath(); g.arc(x, y + 3, 3, Math.PI, 0); g.fill(); g.fillStyle = '#ffd23f'; g.fillRect(x - 1, y - 7, 2, 2); }
+  if (kind === 'garden') { for (const [dx, dy, c] of [[-3, -2, '#ff7ab8'], [3, -1, '#ffd23f'], [0, 3, '#b37bff']]) { g.fillStyle = c; g.beginPath(); g.arc(x + dx, y + dy, 2.5, 0, 7); g.fill(); } }
+  if (kind === 'sanctum') { g.fillStyle = '#ff9ff0'; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, r2 = i % 2 ? 2.5 : 6.5; g.lineTo(x + Math.cos(a) * r2, y + Math.sin(a) * r2); } g.fill(); }
+  if (kind === 'gate') { g.strokeStyle = '#b37bff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 5, 0, 7); g.stroke(); g.fillStyle = '#4cf0ff'; g.fillRect(x - 1, y - 1, 2, 2); }
 }
 export async function regionMap() {
   const nodes = regionNodes().filter((n) => !n.summit); const s = S(); const canFly = !!s.skills?.fly; let sel = whereNow(); let dest = null;
   const visited = (n) => n.home || s.flags['visit' + n.ci];
   await ui.panel({ title: `Region Map${canFly ? ' — choose a city to Soar' : ''}`, wide: true, cls: 'regionmap',
-    render: () => `<div class="rmap"><canvas width="300" height="270"></canvas><div class="rlist"><p class="dim">${canFly ? 'Soar instantly to any place you have visited.' : 'Earn the Soar Disc from the 5th Mastery Hall Leader to fly between cities.'}</p>${nodes.map((n) => `<button data-nav data-act="go" data-arg="${n.id}" ${visited(n) ? '' : 'disabled'}>${visited(n) ? (canFly ? '✈ ' : '◆ ') + esc(n.name) : '??? (not visited)'}${n.theme && visited(n) ? `<small> · ${esc(n.theme)}</small>` : ''}</button>`).join('')}<div class="skills">${Object.entries(FIELD_SKILLS).map(([k, v]) => `<span class="${s.skills?.[k] ? 'on' : ''}">${s.skills?.[k] ? '✔' : '✖'} ${v.name}</span>`).join('')}</div></div></div>`,
+    render: () => `<div class="rmap"><div class="rmapwrap"><canvas width="720" height="1760"></canvas></div><div class="rlist"><p class="dim">${canFly ? 'Soar instantly to any place you have visited.' : 'Earn the Soar Disc from the 5th Mastery Hall Leader to fly between cities.'}</p>${nodes.map((n) => `<button data-nav data-act="go" data-arg="${n.id}" ${visited(n) ? '' : 'disabled'}>${visited(n) ? (canFly ? '✈ ' : '◆ ') + esc(n.name) : '??? (not visited)'}${n.theme && visited(n) ? `<small> · ${esc(n.theme)}</small>` : ''}</button>`).join('')}<div class="skills">${Object.entries(FIELD_SKILLS).map(([k, v]) => `<span class="${s.skills?.[k] ? 'on' : ''}">${s.skills?.[k] ? '✔' : '✖'} ${v.name}</span>`).join('')}</div></div></div>`,
     actions: { go: async (id) => { if (!canFly) { sel = id; ui.toast('You need the Soar Disc to fly.'); return; } const n = nodes.find((q) => q.id === id); if (await ui.confirm(`Soar to ${n.name}?`)) { dest = id; return 'close'; } } } });
   return dest;
 }
-function hookRegionCanvas() { const obs = new MutationObserver(() => { const cv = document.querySelector('.regionmap canvas'); if (cv && !cv.dataset.drawn) { cv.dataset.drawn = 1; drawRegion(cv, whereNow()); } }); obs.observe(document.getElementById('ui'), { childList: true, subtree: true }); }
+function hookRegionCanvas() { const obs = new MutationObserver(() => { const cv = document.querySelector('.regionmap canvas'); if (cv && !cv.dataset.drawn) { cv.dataset.drawn = 1; drawRegion(cv, whereNow()); const wrap = cv.parentElement; requestAnimationFrame(() => { const yy = (cv.dataset.hy || 0) * (cv.clientHeight / MAPH); wrap.scrollTop = Math.max(0, yy - wrap.clientHeight / 2); }); } }); obs.observe(document.getElementById('ui'), { childList: true, subtree: true }); }
 if (typeof document !== 'undefined') setTimeout(hookRegionCanvas, 0);
 
 // ------------------------------------------------------------ dex
@@ -125,7 +223,7 @@ export async function dex() {
   const w = W(); const ids = Object.keys(w.species);
   await ui.panel({ title: `Dex — ${Object.keys(S().caught).length} caught · ${Object.keys(S().seen).length} seen · ${ids.length} total`, wide: true, cols: 6, cls: 'dexp',
     render: () => `<div class="dexgrid">${ids.map((id, n) => { const sp = w.species[id]; const seen = S().seen[id], caught = S().caught[id];
-      return `<button data-nav data-act="sp" data-arg="${id}" class="dexc ${caught ? 'c' : seen ? 's' : 'u'}"><img src="${seen ? G.mini(sp) : G.mini(sp)}" class="${seen ? '' : 'shadow'}"><small>#${String(n + 1).padStart(3, '0')}</small><span>${seen ? esc(sp.name) : '???'}</span></button>`; }).join('')}</div>`,
+      return `<button data-nav data-act="sp" data-arg="${id}" class="dexc ${caught ? 'c' : seen ? 's' : 'u'} rar-${sp.rarity}" style="${seen ? `border-color:${RARITY[sp.rarity]?.color}` : ''}"><img src="${seen ? G.mini(sp) : G.mini(sp)}" class="${seen ? '' : 'shadow'}"><small>#${String(n + 1).padStart(3, '0')}${seen ? ` <i class="stars" style="color:${RARITY[sp.rarity]?.color}">${'★'.repeat(RARITY[sp.rarity]?.stars || 1)}</i>` : ''}</small><span>${seen ? esc(sp.name) : '???'}</span></button>`; }).join('')}</div>`,
     actions: { sp: async (id) => { if (!S().seen[id]) { ui.toast('Not yet encountered.'); return; } const fake = makeMon(w, id, 1); await summary(fake, true); } } });
 }
 
@@ -248,7 +346,7 @@ export async function settings() {
     actions: { t: (k) => change(k, 1), ctl: async () => { setTimeout(async () => { G.busy++; await editControls(); G.busy--; }, 50); return 'close'; } } });
 }
 export async function help() {
-  await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p><h4>Learning to mastery 🎓</h4><p>Every city starts at <b>Easy</b> questions, moves to <b>Medium</b> after 8 correct answers and <b>Mastery</b> after 24. Visit each city's <b>Academy</b> (Learning Quarter, east side) to read lessons, take level checks and the Mastery Exam. The <b>Arcade</b> next door has Unscramble, True/False Blitz, Word Guess, Quiz Ladder and Listening — also playable from the Codex. Language worlds include pronunciation (🔊) when your device has a voice for that language.</p><h4>Time travel ⏳</h4><p><b>Learning Echoes:</b> every question you miss comes back as an echo after 10 minutes, then 1, 3, 7 and 21 days. Battle echoes at an Echo Rift or from the ⏳ Chrono Log — answer all five steps to master it for good.<br><b>Chrono Gate:</b> with 4 badges, the gate in Origin Town opens trips to the past and future of your subject, with history questions and Ancient / Neo- era forms of monsters.<br><b>Real time:</b> the Keeper of Time gives a daily egg (hatches in ~2 hours) and buries time capsules (open after 3 days). Play daily to build your streak, and the Season Herald brings gifts each real season.</p>
+  await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p><h4>Rarity & secrets ★</h4><p>Monsters come in tiers: <b style="color:#b8c0cc">★ Common</b>, <b style="color:#5fd068">★★ Uncommon</b>, <b style="color:#4aa8ff">★★★ Rare</b>, <b style="color:#b36bff">★★★★ Epic</b>, plus four <b style="color:#ffb020">★★★★★ Legendary</b> guardians and one <b style="color:#ff5fd2">★★★★★★ Mythic</b> per world. Rarer monsters are stronger and harder to catch. Any monster can appear as a shimmering <b>✦ Prismatic</b> variant. Secret places — Hidden Groves, Secret Gardens behind each city\'s east hedge, Legendary Lairs behind gaps in the trees on Routes 3, 5, 7 and 9, and the Starfall Sanctum — have rarer encounters. Between every pair of towns lies a special area — Whispering Woods, the Hedge Maze, Mirror Lake, Echo Caverns, <b>Wonderland Park</b> (a theme-park town with a Ferris Wheel, Quiz Coaster, Carousel and Big Top), the Sunken Ruins, the Crystal Labyrinth, Mistwood and the Cloudwalk Bridges. The Region Map shows every town, road, area and discovered secret.</p><h4>Learning to mastery 🎓</h4><p>Every city starts at <b>Easy</b> questions, moves to <b>Medium</b> after 8 correct answers and <b>Mastery</b> after 24. Visit each city's <b>Academy</b> (Learning Quarter, east side) to read lessons, take level checks and the Mastery Exam. The <b>Arcade</b> next door has Unscramble, True/False Blitz, Word Guess, Quiz Ladder and Listening — also playable from the Codex. Language worlds include pronunciation (🔊) when your device has a voice for that language.</p><h4>Time travel ⏳</h4><p><b>Learning Echoes:</b> every question you miss comes back as an echo after 10 minutes, then 1, 3, 7 and 21 days. Battle echoes at an Echo Rift or from the ⏳ Chrono Log — answer all five steps to master it for good.<br><b>Chrono Gate:</b> with 4 badges, the gate in Origin Town opens trips to the past and future of your subject, with history questions and Ancient / Neo- era forms of monsters.<br><b>Real time:</b> the Keeper of Time gives a daily egg (hatches in ~2 hours) and buries time capsules (open after 3 days). Play daily to build your streak, and the Season Herald brings gifts each real season.</p>
     <p>Each city teaches one chapter of your topic. Talk to everyone (tips go into your Codex), pass the Study Lab Trial, then beat the Mastery Hall Leader for a badge. Badges open the road north. Eight badges lead to the Mastery Summit.</p>
     <h4>Types</h4><p>${typeCycleText()}. Each type beats the next one. Super-effective hits do double damage.</p>
     <h4>Legal</h4><p>Hakma is an original work. All monsters, characters, music and art are generated by the game itself. Educational content is provided as-is for learning; always verify safety-critical information (e.g. electrical work) against official codes and licensed professionals.</p>

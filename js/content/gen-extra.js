@@ -156,3 +156,41 @@ GEN.chemMix = (r, lvl = 1) => {
   if (k === 0) { const p = r.int(1, 13); return Q(`[H⁺] = 1 × 10⁻${p} mol/L. pH?`, p, [14 - p, p + 1, -p], `pH = −log[H⁺] = ${p}. ${p < 7 ? 'Acidic' : p > 7 ? 'Basic' : 'Neutral'}.`); }
   const M1 = r.pick([2, 4, 6]), V1 = r.pick([50, 100, 250]), V2 = V1 * r.pick([2, 4, 5]); return Q(`Dilute ${V1} mL of ${M1} M solution to ${V2} mL. New concentration?`, `${r2((M1 * V1) / V2)} M`, [`${r2((M1 * V2) / V1)} M`, `${M1} M`, `${r2(M1 / 2)} M`], 'M1V1 = M2V2.');
 };
+// ---------------------------------------------------------------- Networking & security
+const ip = (n) => [24, 16, 8, 0].map((s) => (n >>> s) & 255).join('.');
+GEN.subnet = (r, lvl = 1) => {
+  if (lvl === 1) { const p = r.pick([24, 25, 26, 27, 28, 29, 30]); const h = 2 ** (32 - p) - 2; return Q(`How many usable hosts in a /${p} subnet?`, h, [h + 2, 2 ** (32 - p), h / 2], `2^(32 − ${p}) − 2 (network and broadcast are reserved).`); }
+  if (lvl === 2) { const p = r.pick([25, 26, 27, 28, 29, 30, 23, 22]); const mask = (0xffffffff << (32 - p)) >>> 0; return Q(`Subnet mask for /${p}?`, ip(mask), [ip((mask << 1) >>> 0), ip(((mask >>> 1) | 0x80000000) >>> 0), ip((mask << 2) >>> 0)], `${p} one-bits followed by zeros.`); }
+  const p = r.pick([26, 27, 28, 29]); const size = 2 ** (32 - p); const base = (192 << 24 | 168 << 16 | r.int(0, 20) << 8) >>> 0; const host = base + r.int(1, 254); const net = Math.floor(host / size) * size;
+  return r() < 0.5 ? Q(`Network address of ${ip(host)}/${p}?`, ip(net), [ip(net + size), ip(Math.max(base, net - size)), ip(host & 0xffffff00)], `Blocks of ${size}: round down to a multiple of ${size}.`)
+    : Q(`Broadcast address of ${ip(host)}/${p}?`, ip(net + size - 1), [ip(net), ip(net + size), ip(net + size - 2)], `Last address of the ${size}-address block.`);
+};
+const PORTS = [[20, 'FTP data'], [21, 'FTP'], [22, 'SSH'], [23, 'Telnet'], [25, 'SMTP'], [53, 'DNS'], [67, 'DHCP'], [80, 'HTTP'], [110, 'POP3'], [143, 'IMAP'], [443, 'HTTPS'], [3389, 'RDP'], [3306, 'MySQL'], [5432, 'PostgreSQL'], [161, 'SNMP'], [123, 'NTP']];
+GEN.ports = (r, lvl = 1) => {
+  const pool = lvl === 1 ? PORTS.filter(([p]) => [22, 25, 53, 80, 443, 21].includes(p)) : PORTS; const [p, s] = r.pick(pool); const others = pool.filter((x) => x[0] !== p);
+  const pick3 = () => { const o = []; while (o.length < 3) { const c = r.pick(others); if (!o.includes(c)) o.push(c); } return o; };
+  return r() < 0.5 ? Q(`Which service uses port ${p} by default?`, s, pick3().map((x) => x[1]), `${s} → ${p}.`) : Q(`Default port for ${s}?`, p, pick3().map((x) => x[0]), `${s} → ${p}.`);
+};
+GEN.passEntropy = (r, lvl = 1) => {
+  if (lvl === 1) { const n = r.pick([4, 6, 8]); return Q(`A PIN of ${n} digits has how many possible combinations?`, (10 ** n).toLocaleString('en-US'), [(10 * n).toLocaleString('en-US'), (n ** 10).toLocaleString('en-US'), (2 ** n).toLocaleString('en-US')], 'Each digit has 10 options: 10ⁿ.'); }
+  if (lvl === 2) { const len = r.pick([8, 10, 12, 16]), set = r.pick([[26, 'lowercase letters'], [62, 'letters and digits'], [95, 'all printable characters']]); const bits = Math.round(len * Math.log2(set[0])); return Q(`About how many bits of entropy in a random ${len}-character password from ${set[0]} ${set[1]}?`, `${bits} bits`, [`${len} bits`, `${set[0]} bits`, `${Math.round(bits / 2)} bits`], `${len} × log₂(${set[0]}) ≈ ${bits}. Each extra bit doubles the guesses.`); }
+  const words = r.pick([4, 5, 6]); const bits = Math.round(words * Math.log2(7776)); return Q(`A passphrase of ${words} random words from a 7,776-word list has about…`, `${bits} bits of entropy`, [`${words * 8} bits of entropy`, `${Math.round(bits / 3)} bits of entropy`, `${7776 * words} bits of entropy`], `log₂(7776) ≈ 12.9 bits per word — long passphrases are strong AND memorable.`);
+};
+GEN.cryptoMath = (r, lvl = 1) => {
+  if (lvl === 1) { const w = r.pick(['HELLO', 'CYBER', 'ATTACK', 'SECRET', 'KEY']), k = r.int(1, 5); const sh = (s, n) => s.replace(/[A-Z]/g, (c) => String.fromCharCode(((c.charCodeAt(0) - 65 + n + 26) % 26) + 65)); return Q(`Caesar cipher, shift ${k}: encrypt "${w}".`, sh(w, k), [sh(w, k + 1), sh(w, -k), sh(w, k - 1) === w ? sh(w, k + 2) : sh(w, k - 1)], 'Shift every letter forward — trivially breakable, which is why we use modern ciphers.'); }
+  if (lvl === 2) { const b = r.pick([1, 2, 3, 4, 8]); return Q(`A hex string of ${b * 2} characters represents how many bytes?`, b, [b * 2, b * 4, b * 8], 'Each byte = 2 hex digits.'); }
+  const k = r.pick([56, 64, 128, 256]); return Q(`A ${k}-bit key has how many possible values?`, `2^${k}`, [`${k}²`, `${k} × 2`, `2^${k / 2}`], 'Each extra bit doubles the keyspace; AES-128/256 are infeasible to brute force.');
+};
+// ---------------------------------------------------------------- Trading (education only)
+GEN.tradeMath = (r, lvl = 1) => {
+  if (lvl === 1) { const k = r.int(0, 1);
+    if (k === 0) { const b = r.pick([10, 25, 48, 100]), c = r.pick([0.01, 0.02, 0.05, 0.1]); const a = r2(b + c); return Q(`Bid $${b.toFixed(2)}, ask $${a.toFixed(2)}. Spread?`, `$${c.toFixed(2)}`, [`$${(c * 10).toFixed(2)}`, `$${a.toFixed(2)}`, `$${(c / 2).toFixed(3)}`], 'Spread = ask − bid.'); }
+    const buy = r.int(20, 80), sell = buy + r.pick([-5, -3, 2, 4, 6]), n = r.pick([50, 100, 200]); const pl = (sell - buy) * n; return Q(`Buy ${n} shares at $${buy}, sell at $${sell}. Profit/loss (before fees)?`, `${pl < 0 ? '−' : ''}$${Math.abs(pl)}`, [`${pl < 0 ? '' : '−'}$${Math.abs(pl)}`, `$${Math.abs(sell - buy)}`, `$${Math.abs(pl) * 2}`], '(sell − buy) × shares.'); }
+  if (lvl === 2) { const k = r.int(0, 2);
+    if (k === 0) { const price = r.pick([30, 45, 60, 90, 120]), eps = r.pick([1.5, 2, 3, 4, 6]); return Q(`Price $${price}, EPS $${eps}. P/E ratio?`, r2(price / eps), [r2(eps / price * 100), price * eps, r2(price / eps / 2)], 'P/E = price ÷ earnings per share.'); }
+    if (k === 1) { const xs = Array.from({ length: 5 }, () => r.int(20, 30)); const avg = r2(xs.reduce((a, b) => a + b, 0) / 5); return Q(`Closes: ${xs.join(', ')}. 5-day simple moving average?`, avg, [Math.max(...xs), xs[4], r2(avg + 1)], 'Sum ÷ 5.'); }
+    const loss = r.pick([20, 25, 33, 50]); const need = r2((loss / (100 - loss)) * 100); return Q(`After a ${loss}% loss, what % gain gets you back to even?`, `${need}%`, [`${loss}%`, `${r2(need / 2)}%`, `${loss * 3}%`], 'Losses need bigger gains to recover: L ÷ (100 − L).'); }
+  const k = r.int(0, 1);
+  if (k === 0) { const acct = r.pick([5000, 10000, 20000, 50000]), risk = r.pick([0.5, 1, 2]), entry = r.pick([20, 40, 50, 80]), stopGap = r.pick([0.5, 1, 2, 4]); const sh = Math.floor((acct * risk / 100) / stopGap); return Q(`Account $${acct.toLocaleString()}, risk ${risk}%, entry $${entry}, stop $${entry - stopGap}. Max shares?`, sh, [Math.floor(acct / entry), sh * 2, Math.floor(sh / 2)], `Risk $${acct * risk / 100} ÷ $${stopGap} per share.`); }
+  const w = r.pick([30, 40, 50, 60]), aw = r.pick([150, 200, 300]), al = r.pick([100, 150]); const ex = r2(w / 100 * aw - (100 - w) / 100 * al); return Q(`Win rate ${w}%, average win $${aw}, average loss $${al}. Expectancy per trade?`, `${ex < 0 ? '−' : '+'}$${Math.abs(ex)}`, [`${ex < 0 ? '+' : '−'}$${Math.abs(ex)}`, `+$${aw - al}`, `+$${r2(w / 100 * aw)}`], 'win% × avg win − loss% × avg loss.');
+};

@@ -13,7 +13,7 @@ import { TYPES, beats, weakTo } from '../content/types.js';
 import { SOLID } from '../core/sprites.js';
 import * as menus from './menus.js';
 import * as puzzles from './puzzles.js';
-import { arcadeHandlers } from './arcade.js';
+import { arcadeHandlers, secretHandlers, parkHandlers, discover } from './arcade.js';
 import { timeHandlers, timeTick, dailyCheck, eraQFn, season } from './time.js';
 import { dueEchoes } from './state.js';
 
@@ -56,7 +56,7 @@ export const events = {
       S().flags['visit' + map.cityIdx] = true; const c = W().cities[map.cityIdx];
       ui.toast(`New city: ${c.name} — ${c.theme}`, 3200);
     }
-    timeTick(); dailyCheck();
+    timeTick(); dailyCheck(); if (map.secret) discover(map.id); if (map.zone && !S().flags['zvisit' + map.zone]) { S().flags['zvisit' + map.zone] = 1; ui.toast(`🧭 Discovered ${map.name}!`, 2600); }
     if (map.era && !S().flags['eravisit_' + map.era]) { S().flags['eravisit_' + map.era] = 1; ui.toast(map.era === 'past' ? '⏪ You travelled into the past!' : '⏩ You travelled into the future!', 3200); }
     if (map.id === 'hometown' && !S().flags['seasontoast_' + season().key + new Date().getFullYear()] && S().flags.starter) { S().flags['seasontoast_' + season().key + new Date().getFullYear()] = 1; ui.toast(`${season().icon} ${season().name} has arrived! The Season Herald in Origin Town has a gift.`, 4200); }
     this.checkObjective(); autosave();
@@ -71,9 +71,9 @@ export const events = {
     if (base !== G.lastObjective) { if (G.lastObjective !== undefined) ui.toast('★ ' + objective(), 3600); G.lastObjective = base; }
   },
   async wild(p) {
-    const m = G.world.map; const rt = m.era ? Math.min(9, Math.max(5, (+G.world.chapter() || 0) + 1)) : m.encounter || Math.min(9, (+G.world.chapter() || 0) + 1); const [lo, hi] = W().routeLevels(rt); const li = R.pick(W().routeLines(rt)); const lvl = R.int(lo, hi);
+    const m = G.world.map; const rt = m.era ? Math.min(9, Math.max(5, (+G.world.chapter() || 0) + 1)) : m.encounter || Math.min(9, (+G.world.chapter() || 0) + 1); const [lo, hi] = W().routeLevels(rt); const boost = m.secret ? 1 : 0; const li = W().pickWild(W().routeLines(rt), R, boost); const lvl = R.int(lo, hi) + (m.secret ? 2 : 0); const shiny = R() < (m.secret ? 1 / 60 : 1 / 160);
     G.busy++; audio.sfx('encounter'); await sleep(350);
-    const r = await runBattle({ kind: 'wild', enemies: [{ sp: W().speciesFor(li, lvl), lvl, era: m.era }], qci: G.world.chapter(), biome: m.biome, music: 'battle', seed: W().id + m.id, qfn: m.era ? eraQFn(m.era) : undefined });
+    const r = await runBattle({ kind: 'wild', enemies: [{ sp: W().speciesFor(li, lvl), lvl, era: m.era, shiny }], qci: G.world.chapter(), biome: m.biome, music: 'battle', seed: W().id + m.id, qfn: m.era ? eraQFn(m.era) : undefined });
     G.world.noEnc = 4; G.busy--;
     await afterBattle(r);
   },
@@ -183,7 +183,7 @@ export function questList() {
   }
   return out;
 }
-Promise.resolve().then(() => Object.assign(handlers, timeHandlers, arcadeHandlers));
+Promise.resolve().then(() => Object.assign(handlers, timeHandlers, arcadeHandlers, secretHandlers, parkHandlers));
 const researchLine = (i) => { const pool = W().routeLines(i + 1); return pool[hash(W().id + 'res' + i) % pool.length]; };
 const lineCaught = (li) => W().lines[li].ids.some((id) => S().caught[id]);
 
@@ -354,7 +354,8 @@ const TOPIC_GROUPS = [
   { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, cloud, DevOps and engineering interviews.', sections: [['Programming', ['cs', 'python', 'java', 'golang', 'softeng']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
   { id: 'lang', icon: '🌍', name: 'World Languages', blurb: 'Learn to speak French, Spanish or Maltese.', sections: [['Languages', ['french', 'spanish', 'maltese']]] },
   { id: 'elec', icon: '🔧', name: 'Trades & Engineering', blurb: 'Circuits, the electrician trade, and cars & engines.', sections: [['Electrical', ['electrical', 'electrician']], ['Automotive', ['automotive']]] },
-  { id: 'biz', icon: '💼', name: 'Business & Finance', blurb: 'Budgeting, investing, running a business and taxes.', sections: [['Money & Business', ['finance']]] },
+  { id: 'sec', icon: '🛡', name: 'Cyber Security & Networking', blurb: 'How networks work, how to defend them, and ethical hacking.', sections: [['Security & Networks', ['networking', 'cybersec', 'hacking']]] },
+  { id: 'biz', icon: '💼', name: 'Business & Finance', blurb: 'Budgeting, investing, taxes, trading and stock analysis.', sections: [['Money & Business', ['finance']], ['Markets', ['trading']]] },
   { id: 'school', icon: '🏫', name: 'School Subjects', blurb: 'Math, language arts and science by grade.', sections: [['Math', ['math-elem', 'math-middle', 'math-high']], ['Language Arts', ['ela-elem', 'ela-high']], ['Science', ['science-elem', 'physics', 'chemistry', 'biology']]] },
 ];
 export async function chooseTopic() {
