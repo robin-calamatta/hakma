@@ -1,0 +1,20 @@
+// Loads every deep content pack (each file registers itself) and re-exports the registry.
+import './french.js';
+import './spanish.js';
+import './maltese.js';
+import './cs.js';
+import './python.js';
+import './java.js';
+import './golang.js';
+import './kubernetes.js';
+import './devops.js';
+import './softeng.js';
+import './terraform.js';
+import './electrical.js';
+import './electrician.js';
+import './automotive.js';
+import './finance.js';
+import './math.js';
+import './ela.js';
+import './science.js';
+export { DEEP, DEEP_META } from './index.js';

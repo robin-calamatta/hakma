@@ -238,6 +238,25 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 .clog { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .clog section { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 8px 10px; }
 .panel .clog h3 { margin: 0 0 6px; font-size: 11px; line-height: 1.4; }
-.panel .clog { font-size: 12px; line-height: 1.5; }
+.panel .clog { font-size: 14px; line-height: 1.5; }
 .clog p, .clog ul { margin: 4px 0; } .clog ul { padding-left: 18px; }
 .clog button { margin-top: 6px; }
+.qlv { font-style: normal; font-size: .75em; padding: 1px 6px; border-radius: 6px; margin-left: 6px; }
+.qlv.lv1 { background: #2f8f4f; color: #fff; } .qlv.lv2 { background: #c08a10; color: #fff; } .qlv.lv3 { background: #b03060; color: #fff; }
+.qsay { background: #2a2350; color: #fff; border: 1px solid #6a5acd; border-radius: 6px; padding: 2px 8px; margin: 4px 4px 0 0; cursor: pointer; font: inherit; font-size: .85em; }
+.qhead .qsay { margin-left: auto; }
+/* Academy lessons & Arcade */
+.lesson .lessonbody { white-space: pre-wrap; line-height: 1.65; font-size: 16px; max-height: 60vh; overflow: auto; padding: 4px 2px; }
+.lesson .row, .arcade .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.arcade .clue { font-size: 16px; line-height: 1.5; background: rgba(255,255,255,.06); border-radius: 8px; padding: 8px 10px; }
+.arcade .slots { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 12px 0; }
+.arcade .slot { min-width: 22px; text-align: center; border-bottom: 3px solid #ffd23f; font-size: 18px; padding: 2px; }
+.arcade .gap { min-width: 14px; text-align: center; font-size: 18px; }
+.arcade .tiles { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.arcade .tiles button { min-width: 36px; min-height: 36px; font-size: 16px; }
+.arcade .tiles.keys button { min-width: 30px; min-height: 30px; font-size: 13px; }
+.arcade .tiles button.used { opacity: .3; }
+.arcade .lives { text-align: center; color: #ff5070; letter-spacing: 3px; }
+
+.arcade .slot { font-size: 22px; } .arcade .tiles button { font-size: 18px; }
+@media (max-width: 700px) { .lesson .lessonbody { font-size: 14px; } .arcade .clue { font-size: 14px; } }

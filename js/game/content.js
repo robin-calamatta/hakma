@@ -2,7 +2,9 @@ import { genreMoves, genreOf } from '../content/types.js';
 // Turns a topic pack (plain data) into a playable world: species, stats, moves, question pools, trainers.
 import { TOPICS } from '../content/index.js';
 import { GEN } from '../content/generators.js';
+import '../content/gen-extra.js';
 import { EXAMPLES } from '../content/examples/index.js';
+import { DEEP, DEEP_META } from '../content/deep/all.js';
 import { MATH_MISTAKES, MATH_MISTAKE_GEN, mistakeQuestions } from '../content/mistakes.js';
 import { hash, rng, R, shuffle, clamp } from '../core/rng.js';
 
@@ -52,15 +54,21 @@ function buildWorld(t) {
   const wild = W.lines.slice(3).filter((l) => !l.route);
   wild.forEach((l, k) => { l.route = 1 + Math.floor((k * 9) / Math.max(1, wild.length)); });
   // ---- cities, terms, questions
+  const D = DEEP[t.id] || []; W.meta = DEEP_META[t.id] || {};
   t.cities.forEach((c, ci) => {
-    const city = { ...c, ci, pool: [], terms: [], gen: c.gen || [] };
-    (c.terms || []).forEach(([term, def], k) => { const T = { id: `t${ci}.${k}`, term, def, ci, ex: (EX[term] || []) }; city.terms.push(T); W.terms.push(T); });
-    (c.qs || []).forEach((q, k) => { const Q = { id: `q${ci}.${k}`, q: q[0], a: q[1], wrong: q.slice(2, -1).filter(Boolean), expl: q[q.length - 1], ci }; city.pool.push(Q); W.qIndex[Q.id] = Q; });
+    const d = D[ci] || {};
+    const city = { ...c, ci, pool: [], terms: [], gen: [...(c.gen || []), ...(d.gen || [])], lessons: d.lessons || [], vocab: [], conj: d.conj || [], cloze: [] };
+    const tl = [...(c.terms || []).map((x, k) => [x[0], x[1], k < 5 ? 1 : 2]), ...(d.terms || []).map((x) => [x[0], x[1], x[2] || 2])];
+    tl.forEach(([term, def, lvl], k) => { const T = { id: `t${ci}.${k}`, term, def, ci, lvl, ex: (EX[term] || []) }; city.terms.push(T); W.terms.push(T); });
+    (c.qs || []).forEach((q, k) => { const Q = { id: `q${ci}.${k}`, q: q[0], a: q[1], wrong: q.slice(2, -1).filter(Boolean), expl: q[q.length - 1], ci, lvl: k < 2 ? 1 : 2 }; city.pool.push(Q); W.qIndex[Q.id] = Q; });
+    (d.qs || []).forEach((q, k) => { const [lvl, qq, a, ...rest] = q; const Q = { id: `d${ci}.${k}`, q: qq, a, wrong: rest.slice(0, -1).filter(Boolean), expl: rest[rest.length - 1], ci, lvl }; city.pool.push(Q); W.qIndex[Q.id] = Q; });
+    (d.vocab || []).forEach((v, k) => city.vocab.push({ id: `v${ci}.${k}`, w: v[0], en: v[1], lvl: v[2] || 1, note: v[3] || '' }));
+    (d.cloze || []).forEach((q, k) => { const [lvl, s, a, ...rest] = q; city.cloze.push({ id: `c${ci}.${k}`, s, a, wrong: rest.slice(0, 3), expl: rest[3] || '', lvl }); });
     W.cities.push(city);
   });
   // "find the mistake" questions: hand-written ones join the city pools (so missed ones come back for review), maths ones are generated
   W.cities.forEach((city) => { city.mistakes = []; city.mgen = (MATH_MISTAKE_GEN[t.id] || [])[city.ci] || []; });
-  mistakeQuestions(t.id).forEach((m, k) => { const city = W.cities[Math.min(m.ci, W.cities.length - 1)]; const [q, a, w1, w2, w3, expl] = m.t; const Q = { id: `m${city.ci}.${k}`, q, a, wrong: [w1, w2, w3], expl, ci: city.ci, mistake: true }; city.mistakes.push(Q); W.qIndex[Q.id] = Q; });
+  mistakeQuestions(t.id).forEach((m, k) => { const city = W.cities[Math.min(m.ci, W.cities.length - 1)]; const [q, a, w1, w2, w3, expl] = m.t; const Q = { id: `m${city.ci}.${k}`, q, a, wrong: [w1, w2, w3], expl, ci: city.ci, mistake: true, lvl: 2 }; city.mistakes.push(Q); W.qIndex[Q.id] = Q; });
   // term-derived questions (need at least 4 terms in reach)
   W.cities.forEach((city, ci) => {
     const near = W.terms.filter((x) => Math.abs(x.ci - ci) <= 1);
@@ -68,8 +76,8 @@ function buildWorld(t) {
       const others = shuffle(near.filter((x) => x.id !== T.id), rng(hash(T.id)));
       if (others.length < 3) return;
       const sameCity = others.filter((x) => x.ci === ci); const pickFrom = (sameCity.length >= 3 ? sameCity : others).slice(0, 3);
-      const Q1 = { id: T.id + 'd', q: `What best describes "${T.term}"?`, a: T.def, wrong: pickFrom.map((x) => x.def), expl: `${T.term}: ${T.def}`, ci, term: true };
-      const Q2 = { id: T.id + 'r', q: `Which term matches: "${T.def}"`, a: T.term, wrong: pickFrom.map((x) => x.term), expl: `${T.term}: ${T.def}`, ci, term: true };
+      const Q1 = { id: T.id + 'd', q: `What best describes "${T.term}"?`, a: T.def, wrong: pickFrom.map((x) => x.def), expl: `${T.term}: ${T.def}`, ci, term: true, lvl: T.lvl };
+      const Q2 = { id: T.id + 'r', q: `Which term matches: "${T.def}"`, a: T.term, wrong: pickFrom.map((x) => x.term), expl: `${T.term}: ${T.def}`, ci, term: true, lvl: Math.min(3, T.lvl + 1) };
       city.pool.push(Q1, Q2); W.qIndex[Q1.id] = Q1; W.qIndex[Q2.id] = Q2;
     });
   });
@@ -103,7 +111,37 @@ function buildWorld(t) {
 
 function fresh(Q) {
   const opts = shuffle([Q.a, ...Q.wrong]);
-  return { id: Q.id, q: Q.q, opts, answer: opts.indexOf(Q.a), expl: Q.expl, ci: Q.ci, a: Q.a };
+  return { id: Q.id, q: Q.q, opts, answer: opts.indexOf(Q.a), expl: Q.expl, ci: Q.ci, a: Q.a, lvl: Q.lvl, say: Q.say, sayLang: Q.sayLang };
+}
+// Difficulty ramp: each city starts easy and climbs to mastery as you answer its questions correctly.
+export function levelFor(save, ci) {
+  const pc = save?.stats?.perCity?.[String(ci)]; const c = pc ? pc.c : 0;
+  let l = c < 8 ? 1 : c < 24 ? 2 : 3; if (save?.badges?.[ci]) l = Math.max(l, 2); if (save?.champion) l = 3; return l;
+}
+export const LEVEL_NAME = ['', 'Easy', 'Medium', 'Mastery'];
+const pickLv = (arr, lvl, recent = []) => {
+  const ok = arr.filter((x) => (x.lvl || 1) <= lvl && !recent.includes(x.id)); const src = ok.length ? ok : arr.filter((x) => (x.lvl || 1) <= lvl);
+  if (!src.length) return null; const top = src.filter((x) => (x.lvl || 1) === lvl);
+  return R.pick(top.length && R() < 0.6 ? top : src);
+};
+const remember = (W, id) => { W.recent.push(id); W.recent = W.recent.slice(-14); };
+const otherVocab = (W, city, v, n = 3) => { let pool = city.vocab.filter((x) => x.id !== v.id && x.en !== v.en && x.w !== v.w); if (pool.length < n) pool = pool.concat(W.cities.flatMap((c) => c.vocab).filter((x) => x.id !== v.id && x.en !== v.en && x.w !== v.w)); return shuffle(pool).slice(0, n); };
+export function vocabQ(W, city, lvl, dir) {
+  const v = pickLv(city.vocab, lvl, W.recent); if (!v) return null; remember(W, v.id); const o = otherVocab(W, city, v); if (o.length < 3) return null;
+  const lang = W.topic.name; const note = v.note ? ` (${v.note})` : '';
+  dir = dir || (R() < 0.5 ? 'to' : 'from');
+  if (dir === 'from') return { id: 'gen', q: `What does «${v.w}» mean?`, a: v.en, wrong: o.map((x) => x.en), expl: `${v.w} = ${v.en}${note}`, ci: city.ci, lvl: v.lvl, say: v.w, sayLang: W.meta.speech };
+  return { id: 'gen', q: `How do you say “${v.en}” in ${lang}?`, a: v.w, wrong: o.map((x) => x.w), expl: `${v.en} = ${v.w}${note}`, ci: city.ci, lvl: v.lvl, say: v.w, sayLang: W.meta.speech, sayAfter: true };
+}
+export function conjQ(W, city, lvl) {
+  const sets = city.conj.filter((c) => (c.lvl || 1) <= lvl); if (!sets.length) return null; const set = R.pick(sets); const [inf, en, forms] = R.pick(set.verbs);
+  const P = W.meta.pronouns || []; const i = R.int(0, forms.length - 1); const a = forms[i]; const wrong = shuffle([...new Set(forms.filter((f) => f !== a))]).slice(0, 3);
+  if (wrong.length < 3) return null;
+  return { id: 'gen', q: `${set.tense}: ${P[i] || ''} ___  (${inf} — ${en})`, a, wrong, expl: `${inf} (${set.tense.toLowerCase()}): ${forms.map((f, k) => `${P[k] || ''} ${f}`).join(' · ')}`, ci: city.ci, lvl: set.lvl || 1, say: `${(P[i] || '').split('/')[0]} ${a}`, sayLang: W.meta.speech };
+}
+export function clozeQ(W, city, lvl) {
+  const c = pickLv(city.cloze, lvl, W.recent); if (!c) return null; remember(W, c.id);
+  return { id: c.id, q: `Fill the blank: ${c.s}`, a: c.a, wrong: c.wrong, expl: c.expl || c.s.replace('___', c.a), ci: city.ci, lvl: c.lvl, say: c.s.replace('___', c.a), sayLang: W.meta.speech, sayAfter: true };
 }
 function pickQuestion(W, ci, save, opt) {
   const final = ci === 'final' || ci >= 8;
@@ -111,27 +149,34 @@ function pickQuestion(W, ci, save, opt) {
   // 1) spaced review of previously missed questions
   if (save && save.missed && save.missed.length && R() < (opt.review ?? 0.22)) {
     const cand = save.missed.filter((id) => W.qIndex[id] && W.qIndex[id].ci <= maxC + (final ? 1 : 0) && !W.recent.includes(id));
-    if (cand.length) { const id = R.pick(cand); W.recent.push(id); W.recent = W.recent.slice(-10); return { ...fresh(W.qIndex[id]), review: true }; }
+    if (cand.length) { const id = R.pick(cand); remember(W, id); return { ...fresh(W.qIndex[id]), review: true }; }
   }
-  if (final && W.finalPool.length && R() < 0.45) { const pool = W.finalPool.filter((q) => !W.recent.includes(q.id)); const Q = R.pick(pool.length ? pool : W.finalPool); W.recent.push(Q.id); W.recent = W.recent.slice(-10); return fresh(Q); }
+  if (final && W.finalPool.length && R() < 0.45) { const pool = W.finalPool.filter((q) => !W.recent.includes(q.id)); const Q = R.pick(pool.length ? pool : W.finalPool); remember(W, Q.id); return fresh(Q); }
   let c = maxC;
   if (final) c = R.int(0, 7); else if (opt.mix !== false && maxC > 0 && R() < 0.25) c = R.int(0, maxC - 1);
   const city = W.cities[c];
-  // ~1 in 6 questions is a "find the mistake" one when the chapter has any
-  if ((city.mistakes?.length || city.mgen?.length) && R() < 0.17) {
+  const lvl = clamp((opt.lvl ?? (final ? 3 : levelFor(save, c))) + (opt.boost || 0), 1, 3);
+  // ~1 in 6 questions is a "find the mistake" one (from medium difficulty up)
+  if (lvl >= 2 && (city.mistakes?.length || city.mgen?.length) && R() < 0.17) {
     const useGen = city.mgen.length && (!city.mistakes.length || R() < 0.6);
-    if (useGen) { const [q, a, w1, w2, w3, expl] = MATH_MISTAKES[R.pick(city.mgen)](R); return fresh({ id: 'gen', q, a: String(a), wrong: [w1, w2, w3].map(String), expl, ci: c }); }
-    const pool = city.mistakes.filter((Q) => !W.recent.includes(Q.id)); if (pool.length) { const Q = R.pick(pool); W.recent.push(Q.id); W.recent = W.recent.slice(-10); return fresh(Q); }
+    if (useGen) { const [q, a, w1, w2, w3, expl] = MATH_MISTAKES[R.pick(city.mgen)](R); return fresh({ id: 'gen', q, a: String(a), wrong: [w1, w2, w3].map(String), expl, ci: c, lvl }); }
+    const pool = city.mistakes.filter((Q) => !W.recent.includes(Q.id)); if (pool.length) { const Q = R.pick(pool); remember(W, Q.id); return fresh(Q); }
   }
-  if (city.gen.length && (R() < 0.6 || !city.pool.length)) {
+  // languages: vocabulary, conjugation and fill-the-blank drills
+  if (city.vocab.length || city.conj.length || city.cloze.length) {
+    const r = R(); let Q = null;
+    if (city.conj.length && r < 0.18) Q = conjQ(W, city, lvl);
+    else if (city.cloze.length && r < 0.32) Q = clozeQ(W, city, lvl);
+    else if (city.vocab.length && r < 0.62) Q = vocabQ(W, city, lvl);
+    if (Q) return fresh(Q);
+  }
+  if (city.gen.length && (R() < (city.pool.length > 30 ? 0.4 : 0.6) || !city.pool.length)) {
     const g = GEN[R.pick(city.gen)];
-    if (g) { const [q, a, w1, w2, w3, expl] = g(R); const wrong = [...new Set([w1, w2, w3].map(String))].filter((x) => x !== String(a)); const Q = { id: 'gen', q, a: String(a), wrong, expl, ci: c }; return fresh(Q); }
+    if (g) { const [q, a, w1, w2, w3, expl] = g(R, lvl); const wrong = [...new Set([w1, w2, w3].map(String))].filter((x) => x !== String(a)); const Q = { id: 'gen', q, a: String(a), wrong, expl, ci: c, lvl }; return fresh(Q); }
   }
-  const handFirst = city.pool.filter((q) => !q.term && !W.recent.includes(q.id));
-  const all = city.pool.filter((q) => !W.recent.includes(q.id));
-  const pool = handFirst.length && R() < 0.55 ? handFirst : all.length ? all : city.pool;
-  const Q = R.pick(pool);
-  W.recent.push(Q.id); W.recent = W.recent.slice(-10);
+  const hand = city.pool.filter((q) => !q.term); const useHand = hand.length && R() < 0.6;
+  const Q = pickLv(useHand ? hand : city.pool, lvl, W.recent) || R.pick(city.pool);
+  remember(W, Q.id);
   return fresh(Q);
 }
 

@@ -13,6 +13,7 @@ import { TYPES, beats, weakTo } from '../content/types.js';
 import { SOLID } from '../core/sprites.js';
 import * as menus from './menus.js';
 import * as puzzles from './puzzles.js';
+import { arcadeHandlers } from './arcade.js';
 import { timeHandlers, timeTick, dailyCheck, eraQFn, season } from './time.js';
 import { dueEchoes } from './state.js';
 
@@ -182,7 +183,7 @@ export function questList() {
   }
   return out;
 }
-Promise.resolve().then(() => Object.assign(handlers, timeHandlers));
+Promise.resolve().then(() => Object.assign(handlers, timeHandlers, arcadeHandlers));
 const researchLine = (i) => { const pool = W().routeLines(i + 1); return pool[hash(W().id + 'res' + i) % pool.length]; };
 const lineCaught = (li) => W().lines[li].ids.some((id) => S().caught[id]);
 

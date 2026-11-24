@@ -461,6 +461,8 @@ export function drawObject(g, kind, x, y, t) {
     for (let yy = -3; yy < 16; yy++) { const w2 = Math.max(1, Math.round((1 - Math.abs(yy - 6) / 10) * 4 + Math.sin(t * sp + yy * 0.7) * 1.2)); px(8 - w2, yy, OUT, w2 * 2, 1); px(8 - w2 + 1, yy, c1, Math.max(1, w2 * 2 - 2), 1); }
     px(7, 0 + Math.round(Math.sin(t * sp) * 3) + 3, c2, 2, 3);
     for (let i = 0; i < (due ? 6 : 2); i++) { const a = t * sp * 0.6 + i * 1.05; px(8 + Math.round(Math.cos(a) * 7), 6 + Math.round(Math.sin(a) * 9), c2, 1, 1); } }
+  if (kind === 'lessons') { px(0, -4, OUT, 16, 15); px(1, -3, '#8a5a30', 14, 13); px(2, -2, '#1f4a32', 12, 10); for (let i = 0; i < 4; i++) px(3, i * 2, '#e8f0e0', 3 + ((i * 5) % 7), 1); px(3, 12, OUT, 2, 4); px(11, 12, OUT, 2, 4); }
+  if (kind === 'cabinet') { const c = `hsl(${(t * 60 + x * 7) % 360},85%,60%)`; px(2, -6, OUT, 12, 22); px(3, -5, '#2a2050', 10, 20); px(3, -5, c, 10, 2); px(4, -1, OUT, 8, 6); px(5, 0, '#102030', 6, 4); px(5 + (Math.floor(t * 4) % 5), 1 + (Math.floor(t * 3) % 3), c, 1, 1); px(4, 7, '#504080', 8, 3); px(5, 8, '#ff4040', 1, 1); px(8, 8, '#40ff80', 1, 1); px(10, 8, '#ffd040', 1, 1); }
   if (kind === 'starter') { px(3, 5, OUT, 10, 9); px(4, 6, '#f0f0f8', 8, 7); px(4, 6, '#4cf0ff', 8, 3); px(7, 8, OUT, 2, 2); }
 }
 const iconCache = {};

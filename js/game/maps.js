@@ -292,19 +292,20 @@ function eraMap(W, era) {
 
 // ------------------------------------------------------------ cities
 function city(W, i) {
-  const c = W.cities[i]; const w = 40, h = 26, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'city' + i)); const biome = cityBiome(W, i);
+  const c = W.cities[i]; const w = 48, h = 26, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'city' + i)); const biome = cityBiome(W, i);
   // layout variation: mirror + which slot holds the Mend Station / Study Lab / Supply Depot
   const M = variant(W, 'cityM' + i, 2) === 1; const perm = [[0, 1, 2], [1, 0, 2], [2, 1, 0], [0, 2, 1], [1, 2, 0], [2, 0, 1]][variant(W, 'cityP' + i, 6)];
   const mx = (x, bw = 1) => (M ? 30 - x - bw : x);
   border(m, [14, 15], [14, 15]);
   m.rect(14, 0, 2, h, T.PATH); m.rect(2, 9, w - 4, 2, T.PATH); m.rect(2, 19, w - 4, 2, T.PATH);
-  for (let y = 2; y < h - 2; y++) m.set(29, y, y === 9 || y === 10 || y === 19 || y === 20 ? T.PATH : T.TREE); // hedge between old town and east district
+  for (const hx of [29, 38]) for (let y = 2; y < h - 2; y++) m.set(hx, y, y === 9 || y === 10 || y === 19 || y === 20 ? T.PATH : T.TREE); // hedges: old town | east district | learning quarter
   const slots = [[19, 3, 6, 5], [3, 13, 6, 5], [19, 13, 6, 5]]; const kinds = [['mend', 'Mend Station'], ['lab', 'Study Lab'], ['depot', 'Supply Depot']];
   const doors = [building(m, mx(3, 8), 2, 8, 6, 'gym', `city${i}_gym`, c.name + ' Mastery Hall'), building(m, mx(10, 3), 14, 3, 4, 'house', `city${i}_house`, 'House')];
   kinds.forEach(([k, label], j) => { const [x, y, bw, bh] = slots[perm[j]]; doors.push(building(m, mx(x, bw), y, bw, bh, k, `city${i}_${k}`, label)); });
   doors.push(building(m, 31, 2, 7, 6, 'archive', `city${i}_archive`, 'Archive'));
+  doors.push(building(m, 40, 2, 7, 6, 'academy', `city${i}_academy`, 'Academy'), building(m, 40, 13, 7, 5, 'arcade', `city${i}_arcade`, 'Arcade'));
   for (const d of doors) m.set(d.dx, d.dy + 1, T.PATH);
-  const ent = { gym: [7, 18], mend: [5, 7], lab: [6, 8], house: [4, 6], depot: [5, 7], archive: [6, 8] };
+  const ent = { gym: [7, 18], mend: [5, 7], lab: [6, 8], house: [4, 6], depot: [5, 7], archive: [6, 8], academy: [6, 8], arcade: [6, 8] };
   for (const wp of m.warps) if (wp.door) { const e = ent[wp.kind]; wp.tx = e[0]; wp.ty = e[1]; }
   const reserved = new Set(); const res = (x, y) => reserved.add(x + ',' + y);
   for (const d of doors) for (let k = 0; k < 3; k++) res(d.dx, d.dy + k);
@@ -315,7 +316,9 @@ function city(W, i) {
   m.rect(31, 13, 6, 4, T.GRASS); m.rect(32, 14, 3, 2, T.WATER); for (const [x, y] of [[31, 12], [36, 12], [31, 17], [36, 17], [30, 15], [37, 15]]) m.set(x, y, T.FLOWER);
   for (let k = 0; k < 2; k++) { const x = 30 + k * 6 + 1, y = 22; res(x, y); m.set(x, y, T.GRASS); m.objs.push(npc(x, y, { name: W.trainerName(hash(c.name + 'e' + k)).name, tips: tipLines(W, i, 10 + k), wander: true, pal: { shirt: ['#c06020', '#2080a0'][k] } })); }
   res(35, 11); res(35, 18); res(36, 22); m.objs.push({ x: 36, y: 22, kind: 'item', hidden: true, walkable: true, item: 'maxtonic', count: 1, key: `c${i}h` });
-  for (let x = 30; x < 38; x++) res(x, 21); for (let x = 30; x < 38; x++) res(x, 8);
+  for (let x = 30; x < 47; x++) res(x, 21); for (let x = 30; x < 47; x++) res(x, 8); for (let y = 2; y < 24; y++) res(43, y);
+  m.set(41, 22, T.SIGN); m.objs.push({ x: 41, y: 22, kind: 'sign', text: ['Learning Quarter', 'North: the Academy — lessons from easy to mastery.', 'South: the Arcade — mini games that train what you learn.'] });
+  m.objs.push(npc(45, 11, { name: 'Tutor', tips: tipLines(W, i, 13, 3), wander: true, pal: { coat: true, shirt: '#3060a0' } }));
   scatter(m, r, 40, biome === 'neon' || biome === 'crystal' ? [T.TREE, T.FLOWER, T.ROCK] : [T.FLOWER, T.FLOWER, T.TREE, T.TREE, T.ROCK], (x, y) => reserved.has(x + ',' + y) || (x >= 13 && x <= 16) || y === 8 || y === 11 || y === 18 || y === 21 || y === 1 || y === h - 3 || x >= 28);
   const pals = ['#d04040', '#3070d0', '#30a050', '#8040c0', '#e0a020'];
   for (let k = 0; k < 4; k++) { const [x, y] = npcSpots[k]; m.set(x, y, m.get(x, y) === T.PATH ? T.PATH : T.GRASS); m.objs.push(npc(x, y, { name: W.trainerName(hash(c.name + k)).name, tips: tipLines(W, i, k), wander: k % 2 === 0, pal: { shirt: pals[k] } })); }
@@ -367,6 +370,18 @@ function cityInterior(W, i, kind) {
     m.objs.push(npc(11, 7, { kind: 'gifter', ci: i, name: 'Old Scholar', key: `arch${i}`, dir: 'left' }));
     m.objs.push(npc(2, 7, { name: 'Reader', tips: tipLines(W, i, 12, 2), wander: true }));
     Object.assign(m, base, { name: c.name + ' Archive', music: 'lab', musicKey: W.id + ':lab' + i });
+  } else if (kind === 'academy') {
+    m = interior(14, 10, back, ...outside); m.rect(1, 2, 3, 1, T.SHELF); m.rect(10, 2, 3, 1, T.SHELF); for (const [x, y] of [[3, 6], [6, 6], [9, 6], [3, 4], [9, 4]]) m.set(x, y, T.DESK); m.set(1, 8, T.PLANT); m.set(12, 8, T.PLANT);
+    m.objs.push({ x: 6, y: 2, kind: 'lessons', ci: i }); m.objs.push({ x: 7, y: 2, kind: 'lessons', ci: i });
+    m.objs.push(npc(5, 3, { kind: 'teacher', ci: i, name: 'Teacher ' + W.trainerName(hash(c.name + 'teach')).name, pal: { coat: true, shirt: '#a03040', hair: '#402818' } }));
+    m.objs.push(npc(11, 6, { name: 'Classmate', tips: tipLines(W, i, 14, 3), wander: true }));
+    Object.assign(m, base, { name: c.name + ' Academy', music: 'lab', musicKey: W.id + ':lab' + i });
+  } else if (kind === 'arcade') {
+    m = interior(14, 10, back, ...outside); m.set(1, 8, T.PLANT); m.set(12, 8, T.PLANT); m.rect(4, 6, 6, 2, T.RUG);
+    [['unscramble', 2, 2], ['blitz', 4, 2], ['guess', 9, 2], ['ladder', 11, 2], ['listen', 12, 5]].forEach(([game, x, y]) => m.objs.push({ x, y, kind: 'cabinet', game, ci: i, solidTile: true }));
+    m.objs.push(npc(6, 3, { kind: 'arcadehost', ci: i, name: 'Arcade Host', pal: { shirt: '#ff40a0', hair: '#40e0ff', hat: '#202020' } }));
+    m.objs.push(npc(2, 6, { name: 'Gamer', tips: tipLines(W, i, 15, 2), wander: true }));
+    Object.assign(m, base, { name: c.name + ' Arcade', music: 'neon', musicKey: W.id + ':arcade' }); m.objs.forEach((o) => { if (o.kind === 'cabinet') o.label = o.game; });
   } else if (kind === 'gym') {
     m = interior(15, 20, back, ...outside); m.rect(0, 2, 15, 18, T.GYMFLOOR); m.rect(0, 0, 15, 2, T.IWALL);
     for (let y = 2; y < 19; y++) { m.set(0, y, T.IWALL); m.set(14, y, T.IWALL); }

@@ -1,4 +1,5 @@
 // DOM-based pixel UI. Every interactive element carries data-nav so keyboard/gamepad/touch/mouse all work the same.
+import { speak, canSpeak } from '../core/speech.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { esc, sleep } from '../core/rng.js';
@@ -113,7 +114,7 @@ export const ui = {
       const keys = ['1', '2', '3', '4'];
       const long = q.opts.some((o) => String(o).length > 48) || q.q.length > 120;
       const html = `<div class="quiz ${opt.cls || ''} ${long ? 'long' : ''} ${q.q.includes('```') ? 'code' : ''}">
-        <div class="qhead"><span class="qtag">${esc(opt.tag || 'Question')}${q.review ? ' · <b>Review</b>' : ''}</span>${opt.who ? `<span class="qwho">${esc(opt.who)}</span>` : ''}</div>
+        <div class="qhead"><span class="qtag">${esc(opt.tag || 'Question')}${q.review ? ' · <b>Review</b>' : ''}${q.lvl ? ` <i class="qlv lv${q.lvl}">${['', 'Easy', 'Medium', 'Mastery'][q.lvl]}</i>` : ''}</span>${q.say && !q.sayAfter && canSpeak(q.sayLang) ? '<button class="qsay" data-say="1" title="Hear it">🔊</button>' : ''}${opt.who ? `<span class="qwho">${esc(opt.who)}</span>` : ''}</div>
         <div class="qtext">${fmt(esc(q.q))}</div>
         <div class="qopts">${q.opts.map((o, i) => `<button data-nav data-i="${i}"><span class="k">${keys[i] || ''}</span>${esc(o)}</button>`).join('')}</div>
         ${limit ? '<div class="qtimer"><div></div></div>' : ''}
@@ -129,6 +130,8 @@ export const ui = {
         for (let i = 0; i < 4; i++) { const c = 'Digit' + (i + 1); const down = input.keys.has(c) || (input.frameTaps && input.frameTaps.has(c)); if (!down) initHeld.delete(c); else if (!initHeld.has(c) && q.opts[i] !== undefined) { pick(i); return true; } }
         return false;
       } });
+      l.el.querySelector('[data-say]')?.addEventListener('click', (e) => { e.stopPropagation(); speak(q.say, q.sayLang); });
+      if (q.say && !q.sayAfter && G.settings.speech !== false) setTimeout(() => speak(q.say, q.sayLang), 250);
       const bar = l.el.querySelector('.qtimer div');
       const tick = () => { if (done) return; const el = (performance.now() - t0) / 1000; if (bar) { bar.style.width = Math.max(0, 100 - (el / limit) * 100) + '%'; bar.classList.toggle('quick', el < quickT); } if (limit && el >= limit) pick(-1); else raf = requestAnimationFrame(tick); };
       raf = requestAnimationFrame(tick);
@@ -141,6 +144,7 @@ export const ui = {
         audio.sfx(correct ? (quick ? 'quick' : 'correct') : 'wrong');
         l.el.querySelector('.quiz').classList.add('answered'); const fb = l.el.querySelector('.qfeedback'); fb.classList.remove('hidden');
         fb.innerHTML = correct ? `<b class="ok">${quick ? '⚡ Quick Recall!' : '✔ Correct!'}</b> <span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>` : `<b class="bad">${i < 0 ? '⏱ Time\'s up!' : '✘ Not quite.'}</b> Answer: <b>${esc(q.a)}</b><br><span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>`;
+        if (q.say && canSpeak(q.sayLang)) { if (G.settings.speech !== false) speak(q.say, q.sayLang); const sb = document.createElement('button'); sb.className = 'qsay'; sb.textContent = '🔊 ' + q.say; sb.addEventListener('click', (e) => { e.stopPropagation(); speak(q.say, q.sayLang); }); fb.appendChild(sb); }
         try { term = G.termForQuestion && opt.learn !== false ? G.termForQuestion(q) : null; } catch { term = null; }
         if (term) { const lb = document.createElement('button'); lb.className = 'lmore'; lb.innerHTML = '📖 Learn more: ' + esc(term.term); lb.addEventListener('click', (e) => { e.stopPropagation(); openLearn(); }); fb.appendChild(lb); }
         fb.addEventListener('click', finish);

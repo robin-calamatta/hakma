@@ -14,7 +14,7 @@ import { ui } from './ui.js';
 
 const TS = 16;
 const DX = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-const PEOPLE = new Set(['keeper', 'seasonal', 'npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
+const PEOPLE = new Set(['teacher', 'arcadehost', 'keeper', 'seasonal', 'npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
 
 // A player's look: their saved wardrobe choices (p.look), falling back to the original per-player defaults.
 export function playerPalette(p, i) {

@@ -48,8 +48,30 @@ export const GEN = {
   ohm: (r) => { const i = r.int(1, 10), R = r.int(2, 20); return [`A ${R} Ω resistor carries ${i} A. Voltage?`, `${i * R} V`, `${R / i} V`, `${i + R} V`, `${i * R * 2} V`, 'V = I × R.']; },
   speed: (r) => { const t = r.int(2, 10), v = r.int(2, 30); return [`A car travels ${v * t} m in ${t} s. Average speed?`, `${v} m/s`, `${v * t * t} m/s`, `${t} m/s`, `${v + t} m/s`, 'Speed = distance ÷ time.']; },
   newton2: (r) => { const m = r.int(1, 20), a = r.int(1, 10); return [`Net force on a ${m} kg object accelerating at ${a} m/s²?`, `${m * a} N`, `${m + a} N`, `${fmt(m / a)} N`, `${m * a * 10} N`, 'F = m × a.']; },
-  kinetic: (r) => { const m = r.int(1, 10) * 2, v = r.int(1, 10); return [`Kinetic energy of ${m} kg at ${v} m/s?`, `${(m * v * v) / 2} J`, `${m * v} J`, `${m * v * v} J`, `${(m * v) / 2} J`, 'KE = ½mv².']; },
+  kinetic: (r) => { const m = r.int(1, 10) * 2, v = r.int(3, 10); return [`Kinetic energy of ${m} kg at ${v} m/s?`, `${(m * v * v) / 2} J`, `${m * v} J`, `${m * v * v} J`, `${(m * v) / 2} J`, 'KE = ½mv².']; },
   density: (r) => { const v = r.int(1, 20), d = r.int(1, 12); return [`Mass ${v * d} g, volume ${v} cm³. Density?`, `${d} g/cm³`, `${v * d * v} g/cm³`, `${v} g/cm³`, `${d + 1} g/cm³`, 'Density = mass ÷ volume.']; },
   moles: (r) => { const [name, M] = r.pick([['water (H₂O)', 18], ['carbon dioxide (CO₂)', 44], ['sodium chloride (NaCl)', 58.5], ['methane (CH₄)', 16], ['oxygen gas (O₂)', 32]]); const n = r.int(1, 5); return [`How many moles are in ${fmt(M * n)} g of ${name}? (M = ${M} g/mol)`, n, fmt(M * n * n), fmt(n / M), n + 1, 'moles = mass ÷ molar mass.']; },
   punnett: (r) => r.pick([['Aa × Aa: fraction of offspring showing the recessive trait?', '1/4', '1/2', '3/4', '0', 'Only aa (1 of 4 boxes) shows the recessive trait.'], ['Aa × aa: fraction heterozygous?', '1/2', '1/4', '3/4', '1', 'Half Aa, half aa.'], ['AA × aa: fraction showing the dominant trait?', '1 (all)', '1/2', '1/4', '0', 'All offspring are Aa.'], ['Aa × Aa: ratio of dominant to recessive phenotypes?', '3:1', '1:2:1', '1:1', '4:0', 'Genotypes are 1:2:1; phenotypes 3:1.']]),
 };
+
+// ---------- Language number drills (written-out numbers)
+const FR_U = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf'];
+const FR_T = ['', '', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante'];
+export function frNum(n) {
+  if (n < 20) return FR_U[n];
+  if (n < 70) { const t = Math.floor(n / 10), u = n % 10; return FR_T[t] + (u === 0 ? '' : u === 1 ? ' et un' : '-' + FR_U[u]); }
+  if (n < 80) return n === 71 ? 'soixante et onze' : 'soixante-' + FR_U[n - 60];
+  if (n === 80) return 'quatre-vingts';
+  if (n < 100) return 'quatre-vingt-' + FR_U[n - 80];
+  return 'cent';
+}
+const ES_U = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+const ES_T = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+export function esNum(n) { if (n < 30) return ES_U[n]; if (n < 100) { const t = Math.floor(n / 10), u = n % 10; return ES_T[t] + (u ? ' y ' + ES_U[u] : ''); } return 'cien'; }
+const numQ = (r, f, lang, max) => {
+  const lvlMax = max; const n = r.int(0, lvlMax); const s = new Set([n]); while (s.size < 4) { const d = r.pick([1, 10, 2, 20, 11, -1, -10]); const m = n + d; if (m >= 0 && m < 100) s.add(m); else s.add(r.int(0, 99)); }
+  const [, ...w] = [...s];
+  return r() < 0.5 ? [`Write ${n} in ${lang}.`, f(n), ...w.map(f), `${n} = ${f(n)}`] : [`«${f(n)}» is which number?`, n, ...w, `${f(n)} = ${n}`];
+};
+GEN.frNumber = (r, lvl = 2) => numQ(r, frNum, 'French', lvl === 1 ? 20 : lvl === 2 ? 69 : 99);
+GEN.esNumber = (r, lvl = 2) => numQ(r, esNum, 'Spanish', lvl === 1 ? 20 : lvl === 2 ? 39 : 99);
