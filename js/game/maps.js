@@ -1,3 +1,4 @@
+import { typeBeatsLines } from '../content/types.js';
 // Deterministic map generation: every topic gets its own region of 8 cities, 9 routes, gyms, interiors and a summit.
 import { rng, hash } from '../core/rng.js';
 import { T } from '../core/sprites.js';
@@ -95,7 +96,7 @@ function hometown(W) {
   const sx = mx(13); m.set(sx, 11, T.SIGN); m.objs.push({ x: sx, y: 11, kind: 'sign', text: [`${HOMETOWN} — where every journey of learning begins.`, `North: Route 1 toward ${W.cities[0].name}.`] });
   m.set(mx(7), 12, T.GRASS); m.set(mx(17), 11, T.GRASS);
   m.objs.push(npc(mx(7), 12, { name: 'Kid', wander: true, lines: ['In battle you attack by answering questions! Get it right fast for a Quick Recall critical hit.', 'Wrong answers aren\'t wasted — you see the explanation, and the question comes back later so you can master it.'] }));
-  m.objs.push(npc(mx(17), 11, { name: 'Elder', lines: ['Six types rule this world:', 'Logic beats Cipher. Cipher beats Spark. Spark beats Data.', 'Data beats Structure. Structure beats Flux. And Flux beats Logic!', 'A super-effective hit does double damage.'] }));
+  m.objs.push(npc(mx(17), 11, { name: 'Elder', lines: ['Six types rule this world:', ...typeBeatsLines(), 'A super-effective hit does double damage.'] }));
   m.objs.push(npc(mx(10), 2, { kind: 'guard', name: 'Ranger', gate: 'starter', dir: 'down' }));
   const ry = routeEntryY(W, 1);
   m.warps.push({ x: 11, y: 0, to: 'route1', tx: 10, ty: ry, dir: 'up' }, { x: 12, y: 0, to: 'route1', tx: 11, ty: ry, dir: 'up' });

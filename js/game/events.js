@@ -373,7 +373,7 @@ export async function chooseTopic() {
   }
   const t = list.find((x) => x.id === picked);
   if (!(await ui.confirm(`Study *${t.name}* for this adventure? (You can start other topics in other save slots.)`))) return;
-  S().topic = picked; S().flags.topic = 1; G.W = getWorld(picked);
+  S().topic = picked; S().flags.topic = 1; G.W = getWorld(picked); G.applyWorldTheme?.(G.W);
   G.world.load(G.world.map.id, S().pos);
   audio.sfx('badge');
   await say([`Field of study set: *${t.name}*.`, `The ${G.W.region} awaits. Head downstairs and out to ${G.W.profName}'s lab!`]);

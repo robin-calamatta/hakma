@@ -1,3 +1,5 @@
+import { applyTypeTheme, genreDiscMove, TYPES } from './content/types.js';
+import { ITEMS } from './game/state.js';
 // Boot, title screen, game loop.
 import { CONFIG } from './config.js';
 import { view } from './core/view.js';
@@ -136,6 +138,12 @@ async function manageSaves() {
     ui.toast(`Slot ${pick + 1} deleted.`);
   }
 }
+// Type names, colours and technique discs follow the subject's genre (Coolant/Combustion for cars, Grammar/Idiom for languages…)
+function applyWorldTheme(W) {
+  const genre = applyTypeTheme(W.topic);
+  for (const [id, it] of Object.entries(ITEMS)) if (it.kind === 'tm') { if (!it._base) it._base = { name: it.name, move: it.move }; const mv = genreDiscMove(genre, it.type) || it._base.move; it.move = mv; it.name = 'Disc: ' + mv; it.desc = `Technique Disc. Teaches a monster ${mv} (${TYPES[it.type].name}, 85). Reusable.`; }
+}
+G.applyWorldTheme = applyWorldTheme;
 async function titleMenu() {
   if (!G.title) return; ui.closeAll();
   const slots = listSlots(); const any = slots.some(Boolean);
@@ -171,7 +179,7 @@ async function newGameFlow() {
 }
 function startGame(slot, save) {
   save = migrate(save); G.slot = slot; G.save = save; G.title = false; G.busy = 0;
-  setWorldSeed(save.seed); G.W = getWorld(save.topic || topics()[0].id);
+  setWorldSeed(save.seed); G.W = getWorld(save.topic || topics()[0].id); applyWorldTheme(G.W);
   input.setPlayers(save.players.length); save.players.forEach((_, i) => input.assignPad(i, i));
   if (!G.world) G.world = new World();
   ui.closeAll(); G.scene = G.world; G.world.load(save.map, save.pos);

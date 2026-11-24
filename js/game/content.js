@@ -1,3 +1,4 @@
+import { genreMoves, genreOf } from '../content/types.js';
 // Turns a topic pack (plain data) into a playable world: species, stats, moves, question pools, trainers.
 import { TOPICS } from '../content/index.js';
 import { GEN } from '../content/generators.js';
@@ -169,7 +170,7 @@ function termLines(t) {
       let n, j = 0; do { n = root + pool[(h + s * 7 + j) % pool.length]; j++; } while (used.has(n.toLowerCase()) && j < 30);
       used.add(n.toLowerCase()); names.push(n);
     }
-    const type = c.type || 'logic'; const M = MOVES[type] || MOVES.logic; const r = rng(h);
+    const type = c.type || 'logic'; const M = genreMoves(genreOf(t), type) || MOVES[type] || MOVES.logic; const r = rng(h);
     const moves = [M[0][r.int(0, 3)], M[1][r.int(0, 3)], M[2][r.int(0, 3)], M[2][(r.int(0, 3) + 1) % 4] + '!'].map((x, i) => (i === 3 ? x.replace('!', '') + ' Max' : x));
     moves[3] = `${root} ${['Overdrive', 'Nova', 'Cascade', 'Finale', 'Surge'][h % 5]}`;
     out.push([names, type, term, moves, def, { route: ci + 1, termKey: ci + ':' + term }]);

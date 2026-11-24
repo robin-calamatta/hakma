@@ -43,7 +43,7 @@ img.mini { width: 2.2em; height: 2.2em; image-rendering: pixelated; }
 img.ico { width: 1.4em; height: 1.4em; image-rendering: pixelated; vertical-align: middle; margin-right: 0.3em; }
 .lv { color: var(--acc); font-size: 0.9em; }
 .type { display: inline-block; padding: 0 0.35em; font: calc(var(--px) * 5) 'Press Start 2P'; line-height: 1.9; color: #14101c; border: calc(var(--px) * 1) solid #000; vertical-align: middle; }
-.t-logic { background: #4aa8ff; } .t-cipher { background: #b36bff; } .t-spark { background: #ffd23f; } .t-data { background: #3ddc84; } .t-structure { background: #c98b52; } .t-flux { background: #ff6a3d; } .t-normal { background: #cfcfd8; }
+.t-logic { background: var(--t-logic, #4aa8ff); } .t-cipher { background: var(--t-cipher, #b36bff); } .t-spark { background: var(--t-spark, #ffd23f); } .t-data { background: var(--t-data, #3ddc84); } .t-structure { background: var(--t-structure, #c98b52); } .t-flux { background: var(--t-flux, #ff6a3d); } .t-normal { background: #cfcfd8; }
 .minihp, .hp, .xpbar, .bar { display: block; height: 0.45em; background: #000; border: calc(var(--px) * 1) solid #000; position: relative; overflow: hidden; }
 .minihp i, .hp i, .xpbar i, .bar i { position: absolute; inset: 0 auto 0 0; background: var(--ok); }
 i.y { background: #ffd23f !important; } i.r { background: var(--bad) !important; }
