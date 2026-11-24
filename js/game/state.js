@@ -56,7 +56,9 @@ export const maxHp = (W, m) => stats(W, m).hp;
 export const FIELD_SKILLS = {
   cut:   { name: 'Slice', disc: 'Slice Disc', badge: 0, desc: 'Cuts down small saplings that block paths.' },
   smash: { name: 'Smash', disc: 'Smash Disc', badge: 2, desc: 'Shatters cracked boulders in your way.' },
+  teleport: { name: 'Teleport', disc: 'Teleport Disc', badge: 3, desc: 'Warp back to any town or area you have discovered — works anywhere, even indoors or in caves (Menu → Teleport).' },
   fly:   { name: 'Soar',  disc: 'Soar Disc',  badge: 4, desc: 'Fly instantly to any city you have visited (from the Region Map).' },
+  swim:  { name: 'Swim',  disc: 'Swim Disc',  badge: 5, desc: 'Ride your lead monster across open water to reach islands. Face water and press A.' },
 };
 export const tmMove = (id) => ({ name: ITEMS[id].move, power: 85, type: ITEMS[id].type, kind: 'hit', lvl: 1, tm: true });
 export const movesOf = (W, m) => W.species[m.sp].moves.filter((mv) => mv.lvl <= m.lvl).concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));

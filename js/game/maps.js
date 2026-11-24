@@ -63,6 +63,8 @@ function build(W, id) {
   if ((mm = id.match(/^route(\d)$/))) return route(W, +mm[1]);
   if ((mm = id.match(/^grove(\d)$/))) return grove(W, +mm[1]);
   if ((mm = id.match(/^zone(\d)$/))) return zone(W, +mm[1]);
+  if ((mm = id.match(/^link(\d)$/))) return link(W, +mm[1]);
+  if (id === 'sea') return sea(W);
   if ((mm = id.match(/^lair(\d)$/))) return lair(W, +mm[1]);
   if ((mm = id.match(/^garden(\d)$/))) return garden(W, +mm[1]);
   if (id === 'sanctum') return lair(W, 4);
@@ -113,6 +115,7 @@ function hometown(W) {
   m.objs.push(npc(mx(9), 15, { kind: 'seasonal', name: 'Season Herald', pal: { shirt: '#e07030', hair: '#5a3018', hat: '#c03030' } }));
   m.objs.push({ x: mx(2), y: 13, kind: 'rift' });
   m.objs.push({ x: mx(1), y: 15, kind: 'secretdoor', to: 'sanctum', tx: 12, ty: 21, dir: 'up', need: 'badges', label: 'A stone door with eight badge-shaped hollows is hidden among the trees.' });
+  openLinkPorts(W, m, 'hometown');
   Object.assign(m, { name: HOMETOWN, kind: 'town', biome: SEED ? cityBiome(W, 0) : 'meadow', music: 'town', ci: 0, gateNorth: { y: 1, flag: 'starter' } });
   return m;
 }
@@ -313,6 +316,9 @@ function zone(W, r) {
     item(5, h - 31, loot(), 1); item(23, h - 18, loot(), 2); item(4, h - 16, 'cube3', 3, true);
     m.objs.push(npc(13, h - 8, { name: Z.sky ? 'Sky Sailor' : 'Angler', tips: [Z.sky ? 'These bridges hang above the clouds. Don\'t look down!' : 'The fish here are huge… and so are the monsters on the islands!', ...tipLines(W, ci, 18, 2)], pal: { shirt: Z.sky ? '#a0c8ff' : '#3a6aa0', hat: '#e0d0a0' } }));
     trainer(21, h - 31, 'left', 0); trainer(5, h - 16, 'right', 1);
+    // islands with no bridges — only reachable with Swim
+    if (!Z.sky) { m.rect(25, h - 12, 3, 3, T.GRASS); m.rect(3, h - 11, 3, 3, T.GRASS); item(26, h - 11, 'cube3', 4); item(4, h - 10, 'maxtonic', 5); m.set(25, h - 12, T.TALL); m.set(5, h - 9, T.TALL); m.swimIsles = true; }
+    if (!Z.sky) { for (const y of [16, 17]) { m.set(w - 2, y, T.WATER); m.set(w - 1, y, T.WATER); m.warps.push({ x: w - 1, y, to: 'sea', tx: 1, ty: y, dir: 'right' }); } }
   } else if (Z.kind === 'cave') {
     m = grid(w, h, T.ROCK);
     carveWalk(m, R, 14, h - 2, 14, 1, 2, T.PATH, 0.35); carveWalk(m, R, 14, h - 8, 4, 10, 2, T.PATH, 0.5); carveWalk(m, R, 15, h - 14, 24, 6, 2, T.PATH, 0.5);
@@ -349,9 +355,90 @@ function zone(W, r) {
     item(26, 10, 'cube2', 1); item(4, 22, 'supertonic', 2); item(27, 24, 'cube3', 3, true);
   }
   m.w = w; m.h = h; zoneExits(W, m, r);
-  Object.assign(m, { name: Z.name, kind: Z.kind === 'park' ? 'town' : 'route', zone: r, biome, music: Z.kind === 'park' ? 'neon' : Z.kind === 'maze' || Z.kind === 'cave' || Z.night ? 'mystic' : ROUTE_MOOD[biome] || 'route', ci, encounter: Z.kind === 'park' ? undefined : r, encRate: Z.kind === 'maze' ? 0.8 : 1, entry: Z.kind === 'park' ? { x: 14, y: 31 } : undefined });
+  Object.assign(m, { name: Z.name, sky: !!Z.sky, kind: Z.kind === 'park' ? 'town' : 'route', zone: r, biome, music: Z.kind === 'park' ? 'neon' : Z.kind === 'maze' || Z.kind === 'cave' || Z.night ? 'mystic' : ROUTE_MOOD[biome] || 'route', ci, encounter: Z.kind === 'park' ? undefined : r, encRate: Z.kind === 'maze' ? 0.8 : 1, entry: Z.kind === 'park' ? { x: 14, y: 31 } : undefined });
   if (Z.kind === 'park') m.noEncounters = true;
   return m;
+}
+
+
+// ------------------------------------------------------------ loop trails: side roads joining towns two apart, sealed by field skills
+export const LINKS = [
+  { name: 'Sapling Trail', a: 'hometown', aSide: 'east', b: 'city1', bSide: 'east', needs: ['cut'] },
+  { name: 'Boulder Gorge', a: 'city1', aSide: 'west', b: 'city3', bSide: 'west', needs: ['smash'] },
+  { name: 'Coastline Path', a: 'city3', aSide: 'east', b: 'city5', bSide: 'east', needs: ['swim', 'cut'] },
+  { name: 'Highland Pass', a: 'city5', aSide: 'west', b: 'city7', bSide: 'west', needs: ['smash', 'cut'] },
+];
+export const LINK_H = 50, LINK_RIVER = 24;
+// where a link trail enters a town (the tile just inside the side exit)
+export function linkPort(W, place, side) {
+  if (place === 'hometown') return { x: 22, ys: [9, 10], edge: 23 };
+  return side === 'west' ? { x: 1, ys: [9, 10], edge: 0 } : { x: 46, ys: [19, 20], edge: 47 };
+}
+export function openLinkPorts(W, m, place) {
+  LINKS.forEach((L, k) => {
+    for (const [pl, side, end] of [[L.a, L.aSide, 'south'], [L.b, L.bSide, 'north']]) {
+      if (pl !== place) continue; const P = linkPort(W, place, side);
+      for (const y of P.ys) { for (let x = Math.min(P.x, P.edge); x <= Math.max(P.x, P.edge); x++) m.set(x, y, T.PATH); if (place === 'hometown') m.set(21, y, T.PATH);
+        m.warps.push({ x: P.edge, y, to: 'link' + k, tx: 12 + (y - P.ys[0]), ty: end === 'south' ? LINK_H - 2 : 1, dir: end === 'south' ? 'up' : 'down' }); }
+      m.objs = m.objs.filter((o) => !(P.ys.includes(o.y) && Math.abs(o.x - P.x) <= 1));
+      const sy = P.ys[0] - 1, sx = place === 'hometown' ? 20 : P.x + (side === 'west' ? 1 : -1); if ([T.GRASS, T.FLOWER, T.TALL].includes(m.get(sx, sy)) && !m.objs.some((o) => o.x === sx && o.y === sy)) { m.set(sx, sy, T.SIGN); const other = end === 'south' ? L.b : L.a; m.objs.push({ x: sx, y: sy, kind: 'sign', text: [`${side === 'west' ? '← West' : 'East →'}: ${L.name}`, `A loop trail to ${other === 'hometown' ? HOMETOWN : W.cities[+other.slice(4)].name}. Blocked by ${L.needs.map((n) => FIELD_SKILL_NAMES[n]).join(' & ')} obstacles.`] }); }
+    }
+  });
+}
+function link(W, k) {
+  const L = LINKS[k]; const w = 26, h = LINK_H, m = grid(w, h, T.GRASS); const R = rng(hash(W.id + SEED + 'link' + k));
+  const biome = k === 2 ? 'coast' : k === 1 || k === 3 ? 'desert' : 'forest'; border(m, [12, 13], [12, 13]);
+  // winding trail
+  let x = 12; for (let y = h - 1; y >= 0; y--) { m.set(x, y, T.PATH); m.set(x + 1, y, T.PATH); if (y % 4 === 0 && y > 3 && y < h - 4) { const nx = Math.max(4, Math.min(w - 6, x + R.int(-3, 3))); for (let xx = Math.min(x, nx); xx <= Math.max(x, nx) + 1; xx++) m.set(xx, y, T.PATH); x = nx; } }
+  for (let y = 0; y < 4; y++) for (const xx of [12, 13]) m.set(xx, y, T.PATH); for (let y = h - 4; y < h; y++) for (const xx of [12, 13]) m.set(xx, y, T.PATH);
+  for (let y = 0; y < 4; y++) { const row = (x2) => m.get(x2, y); void row; }
+  // reconnect the top of the winding trail to the exit columns
+  for (let y = 3; y < 8; y++) { const xs = []; for (let xx = 2; xx < w - 2; xx++) if (m.get(xx, y) === T.PATH) xs.push(xx); if (xs.length) { const a = Math.min(...xs, 12), b = Math.max(...xs, 13); for (let xx = a; xx <= b; xx++) m.set(xx, 3, T.PATH); break; } }
+  for (let y = 3; y <= 7; y++) { /* columns 12-13 already open near the top */ }
+  const wallTile = k === 1 || k === 3 ? T.ROCK : T.TREE;
+  const wall = (y, tile, under) => { for (let xx = 2; xx < w - 2; xx++) m.set(xx, y, wallTile); const gaps = []; for (let xx = 2; xx < w - 2; xx++) if (m.get(xx, y - 1) === T.PATH || m.get(xx, y + 1) === T.PATH) gaps.push(xx); const gx = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 12; m.set(gx, y, tile); m.set(gx, y - 1, T.PATH); m.set(gx, y + 1, T.PATH); (m.obstacles = m.obstacles || []).push([gx, y, tile, under]); return gx; };
+  const obs = { cut: T.CUTTREE, smash: T.CRACKROCK };
+  const first = L.needs[0], second = L.needs[1] || L.needs[0];
+  if (first !== 'swim') wall(h - 6, obs[first], T.PATH);
+  if (k === 2) { for (let y = LINK_RIVER; y < LINK_RIVER + 5; y++) for (let xx = 0; xx < w; xx++) m.set(xx, y, T.WATER); m.set(0, LINK_RIVER + 2, T.WATER); m.set(w - 1, LINK_RIVER + 2, T.WATER); m.warps.push({ x: w - 1, y: LINK_RIVER + 2, to: 'sea', tx: 38, ty: 16, dir: 'left' }); }
+  wall(5, obs[second], T.PATH);
+  m.clearable = CLEARABLE;
+  // grass, loot, trainers, signs
+  for (let n = 0; n < 6; n++) { const px0 = R.int(3, w - 9), py0 = R.int(8, h - 12); if (k === 2 && py0 + 4 >= LINK_RIVER && py0 <= LINK_RIVER + 5) continue; for (let y = py0; y < py0 + 4; y++) for (let xx = px0; xx < px0 + 5; xx++) if (m.get(xx, y) === T.GRASS) m.set(xx, y, T.TALL); }
+  scatter(m, R, 30, [T.TREE, T.FLOWER, k === 1 || k === 3 ? T.ROCK : T.TREE], (xx, y) => m.get(xx, y) !== T.GRASS || [m.get(xx + 1, y), m.get(xx - 1, y), m.get(xx, y + 1), m.get(xx, y - 1)].includes(T.PATH) || y < 7 || y > h - 8);
+  const free = []; for (let y = 8; y < h - 8; y++) for (let xx = 3; xx < w - 3; xx++) if (m.get(xx, y) === T.GRASS && [m.get(xx + 1, y), m.get(xx - 1, y)].includes(T.PATH)) free.push([xx, y]);
+  const pickFree = () => free.splice(R.int(0, free.length - 1), 1)[0];
+  const lines = W.routeLines(Math.min(9, 2 + k * 2)); const [, hi] = W.routeLevels(Math.min(9, 2 + k * 2));
+  for (let t = 0; t < 2 && free.length; t++) { const [tx, ty] = pickFree(); const nm = W.trainerName(hash(W.id + SEED + 'lk' + k + t)); const n = Math.min(2 + (k >> 1), 3); m.objs.push({ x: tx, y: ty, kind: 'trainer', dir: m.get(tx + 1, ty) === T.PATH ? 'right' : 'left', sight: 3, key: `lk${k}t${t}`, name: nm.name, cls: nm.cls, team: W.makeTeam(hash(W.id + SEED + 'lktm' + k + t), lines, n, hi + 2 - (n - 1)), money: (hi + 3) * 26, qci: Math.min(7, k * 2 + 1) }); }
+  for (let t = 0; t < 2 && free.length; t++) { const [ix, iy] = pickFree(); m.objs.push({ x: ix, y: iy, kind: 'item', item: R.pick(['cube2', 'supertonic', 'revive', 'maxtonic']), count: 1, key: `lk${k}i${t}` }); }
+  m.objs.push({ x: R.int(3, w - 4), y: R.int(9, h - 10), kind: 'item', hidden: true, walkable: true, item: 'cube3', count: 1, key: `lk${k}h` });
+  const placeName = (p) => (p === 'hometown' ? HOMETOWN : W.cities[+p.slice(4)].name);
+  m.set(11, h - 3, T.SIGN); m.objs.push({ x: 11, y: h - 3, kind: 'sign', text: [L.name, `North: ${placeName(L.b)}. South: ${placeName(L.a)}.`, `A shortcut loop — you'll need ${L.needs.map((n) => FIELD_SKILL_NAMES[n]).join(' and ')} to get through.`] });
+  for (const xx of [12, 13]) { const A = linkPort(W, L.a, L.aSide), B = linkPort(W, L.b, L.bSide);
+    m.warps.push({ x: xx, y: h - 1, to: L.a, tx: A.x, ty: A.ys[xx - 12], dir: L.aSide === 'east' ? 'left' : 'right' }); m.warps.push({ x: xx, y: 0, to: L.b, tx: B.x, ty: B.ys[xx - 12], dir: L.bSide === 'east' ? 'left' : 'right' }); }
+  Object.assign(m, { name: L.name, kind: 'route', biome, music: ROUTE_MOOD[biome] || 'route', ci: Math.min(7, k * 2 + 1), encounter: Math.min(9, 2 + k * 2), link: k });
+  return m;
+}
+const FIELD_SKILL_NAMES = { cut: 'Slice', smash: 'Smash', swim: 'Swim', fly: 'Soar', teleport: 'Teleport' };
+// ------------------------------------------------------------ the Azure Sea: open water with islands, reached by Swim
+function sea(W) {
+  const w = 40, h = 34, m = grid(w, h, T.WATER); const R = rng(hash(W.id + SEED + 'sea'));
+  for (let x = 0; x < w; x++) { m.set(x, 0, T.ROCK); m.set(x, h - 1, T.ROCK); } for (let y = 0; y < h; y++) { m.set(0, y, T.ROCK); m.set(w - 1, y, T.ROCK); }
+  for (const y of [16, 17]) { m.set(0, y, T.WATER); m.set(w - 1, y, T.WATER); }
+  m.warps.push({ x: 0, y: 16, to: 'zone3', tx: ZW - 2, ty: 16, dir: 'left' }, { x: 0, y: 17, to: 'zone3', tx: ZW - 2, ty: 17, dir: 'left' }, { x: w - 1, y: 16, to: 'link2', tx: 24, ty: LINK_RIVER + 2, dir: 'right' }, { x: w - 1, y: 17, to: 'link2', tx: 24, ty: LINK_RIVER + 2, dir: 'right' });
+  const isle = (x0, y0, iw, ih) => { m.rect(x0, y0, iw, ih, T.PATH); m.rect(x0 + 1, y0 + 1, iw - 2, ih - 2, T.GRASS); };
+  isle(4, 3, 9, 7); isle(27, 3, 10, 8); isle(5, 22, 11, 8); isle(26, 21, 10, 9); isle(17, 13, 6, 5);
+  m.rect(6, 24, 7, 4, T.TALL); m.rect(28, 5, 3, 3, T.TALL);
+  m.objs.push(npc(8, 5, { name: 'Old Turtle Keeper', tips: ['Welcome to Turtle Isle! Few trainers can swim this far.', 'The atoll to the south-west is full of rare monsters. The lighthouse keeps sailors safe… and hides a secret.', ...tipLines(W, 4, 23, 1)], pal: { coat: true, shirt: '#3a8a6a', hair: '#e0e0e0' } }));
+  m.objs.push({ x: 10, y: 7, kind: 'item', item: 'maxtonic', count: 2, key: 'seai0' });
+  m.objs.push({ x: 33, y: 5, kind: 'ride', ride: 'lighthouse', decor: true }); m.set(32, 8, T.SIGN); m.objs.push({ x: 32, y: 8, kind: 'sign', text: ['Lighthouse Isle', 'The keeper left a note: "Treasure lies where the map has an X — the eastern isle."'] });
+  m.objs.push({ x: 29, y: 9, kind: 'item', item: 'cube3', count: 1, key: 'seai1' });
+  [[28, 23], [31, 25], [34, 27]].forEach(([x, y], j) => m.objs.push({ x, y, kind: 'item', item: ['cube3', 'revive', 'maxtonic'][j], count: j ? 2 : 1, key: 'seaX' + j }));
+  m.set(30, 22, T.SIGN); m.objs.push({ x: 30, y: 22, kind: 'sign', text: ['Treasure Isle', 'X marks the spot… three times!'] });
+  m.objs.push({ x: 14, y: 26, kind: 'item', hidden: true, walkable: true, item: 'cube3', count: 1, key: 'seah' });
+  m.set(19, 14, T.SIGN); m.objs.push({ x: 19, y: 14, kind: 'sign', text: ['Azure Sea', 'West: Mirror Lake. East: the Coastline Path. Islands: Turtle Isle (NW), Lighthouse Isle (NE), Coral Atoll (SW), Treasure Isle (SE).'] });
+  Object.assign(m, { name: 'Azure Sea', kind: 'route', biome: 'coast', music: 'route', ci: 5, encounter: 6, encRate: 1.2, secret: true });
+  void R; return m;
 }
 
 // ------------------------------------------------------------ legendary lairs & the mythic sanctum
@@ -479,6 +566,7 @@ function city(W, i) {
     m.warps.push({ x, y: h - 1, to: `zone${i + 1}`, tx: x, ty: 1, dir: 'down' });
     m.warps.push({ x, y: 0, to: `route${i + 2}`, tx: 10 + (x - 14), ty: ry, dir: 'up' });
   }
+  openLinkPorts(W, m, 'city' + i);
   Object.assign(m, { name: c.name, kind: 'town', biome, music: CITY_MOOD[biome] || 'town', ci: i, cityIdx: i, gateNorth: { y: 1, badge: i } });
   return m;
 }

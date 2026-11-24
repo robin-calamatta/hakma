@@ -13,7 +13,7 @@ import { questList, objective } from './events.js';
 import { monRow, evolveScene } from './battle.js';
 import { checkEvolve, evolve, FIELD_SKILLS, tmMove } from './state.js';
 import { BIOMES } from '../core/sprites.js';
-import { biomeOf, worldSeed, getMap, routeLayout, LAIR_ROUTE, zoneInfo } from './maps.js';
+import { biomeOf, worldSeed, getMap, routeLayout, LAIR_ROUTE, zoneInfo , LINKS } from './maps.js';
 import { learnMore, externalOn } from './learn.js';
 import { hash, rng } from '../core/rng.js';
 import { itemIcon } from '../core/sprites.js';
@@ -27,13 +27,14 @@ export async function mainMenu(pi = 0) {
   for (;;) {
     const online = G.net?.online;
     let items = [
-      ['team', '◈ Team'], ['map', '🗺 Map'], ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['time', `⏳ Chrono Log${dueEchoes(S()).length ? ` <i class="badge">${dueEchoes(S()).length}</i>` : ''}`], ['mastery', '▲ Mastery'],
+      ['team', '◈ Team'], ['map', '🗺 Map'], ...(S().skills?.teleport ? [['tele', '✨ Teleport']] : []), ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['time', `⏳ Chrono Log${dueEchoes(S()).length ? ` <i class="badge">${dueEchoes(S()).length}</i>` : ''}`], ['mastery', '▲ Mastery'],
       ['friends', `👥 Friends & Co-op${online ? ' <i class="dot on"></i>' : ''}`], ['look', '👕 Wardrobe'], ['players', '🎮 Local Players'], ['save', '💾 Save'], ['settings', '⚙ Settings'], ['help', '? Help & Legal'], ['title', '⏏ Title Screen'],
     ];
     if (!CONFIG.ONLINE) items = CONFIG.CLOUD_SAVES ? items.map((it) => (it[0] === 'friends' ? ['friends', G.net?.authed ? '☁ Account & Cloud' : '☁ Log in / Cloud Save'] : it)) : items.filter(([k]) => k !== 'friends');
     const c = await ui.choose(`${S().players[pi]?.name || ''} · ¤${S().money} · Badges ${badgeCount(S())}/8 — ${objective()}`, items.map(([, h]) => ({ html: h })), { cls: 'mainmenu', start: G.menuIdx || 0, cols: 2 });
     if (c < 0) break; G.menuIdx = c; const k = items[c][0];
     if (k === 'map') { const dest = await regionMap(); if (dest) { ui.closeAll(); G.busy--; await G.events.fly(dest); return; } }
+    if (k === 'tele') { const sp = G.events.teleportSpots(); const i = await ui.choose('Teleport where?', sp.map((q) => ({ html: `${q.icon} ${esc(q.name)}` }))); if (i >= 0) { ui.closeAll(); G.busy--; await G.events.teleport(sp[i].id); return; } continue; }
     if (k === 'time') { const go = await chronoLog(); if (go === 'echo') { ui.closeAll(); G.busy--; await echoBattle(); return; } }
     if (k === 'team') await team(pi); if (k === 'dex') await dex(); if (k === 'bag') await bag(pi); if (k === 'codex') await codex(); if (k === 'quests') await quests(); if (k === 'mastery') await mastery();
     if (k === 'friends') await G.netui.friends(); if (k === 'look') { const pi = G.save.players.length > 1 ? await ui.choose('Whose look?', G.save.players.map((p, i) => `P${i + 1} ${esc(p.name)}`)) : 0; if (pi >= 0) await G.wardrobe(pi); } if (k === 'players') await players(); if (k === 'settings') await settings(); if (k === 'help') await help();
@@ -86,13 +87,21 @@ function regionNodes() {
   nodes.push({ id: 'summit', name: 'Mastery Summit', x: 180, y: Y(9) + 8, biome: 'crystal', summit: true, idx: 9 });
   return nodes;
 }
-function whereNow() { const id = S().map; let m; if ((m = id.match(/^city(\d)/))) return 'city' + m[1]; if ((m = id.match(/^(route\d|grove\d|lair\d|garden\d|zone\d)/))) return m[1]; if (id === 'summit' || id === 'sanctum') return id; if (id.startsWith('era_')) return 'gate'; return 'hometown'; }
+function whereNow() { const id = S().map; let m; if ((m = id.match(/^city(\d)/))) return 'city' + m[1]; if ((m = id.match(/^(route\d|grove\d|lair\d|garden\d|zone\d|link\d)/))) return m[1]; if (id === 'sea') return 'sea'; if (id === 'summit' || id === 'sanctum') return id; if (id.startsWith('era_')) return 'gate'; return 'hometown'; }
 // the road for route r, following the real winding path of that route's map
 function routePoints(nodes, r) {
   const a = nodes[r - 1], b = nodes[r]; const { w, h, px } = routeLayout(W(), r); const mean = px.reduce((s2, v) => s2 + v, 0) / px.length; const pts = [];
   for (let k = 0; k <= 24; k++) { const t = k / 24; const yy = Math.round((1 - t) * (h - 1)); const dev = (px[yy] - mean) / w; pts.push([a.x + (b.x - a.x) * t + dev * 110 * Math.sin(Math.PI * t), a.y + (b.y - a.y) * t]); }
   return pts;
 }
+// loop trails bulge out to the side of the chain between the two towns they join
+function linkPoints(nodes, k) {
+  const L = LINKS[k]; const nd = (id) => nodes.find((n) => n.id === id); const a = nd(L.a), b = nd(L.b); const east = L.aSide === 'east';
+  const cxp = 2 * (east ? MAPW - 30 : 30) - (a.x + b.x) / 2; const pts = [];
+  for (let i = 0; i <= 24; i++) { const t = i / 24, u = 1 - t; pts.push([u * u * a.x + 2 * u * t * cxp + t * t * b.x, u * u * a.y + 2 * u * t * ((a.y + b.y) / 2) + t * t * b.y]); }
+  return pts;
+}
+function seaSpot(nodes) { const [, zy] = along(routePoints(nodes, 3), ZONE_F); const c3 = nodes.find((n) => n.id === 'city3'); return [MAPW - 40, (zy + c3.y) / 2 + 8]; }
 const along = (pts, f) => { const i = Math.min(pts.length - 1, Math.max(0, Math.round(f * (pts.length - 1)))); return pts[i]; };
 function secretsOnMap(nodes) {
   const w = W(); const out = [];
@@ -121,7 +130,7 @@ function drawRegion(cv) {
   g.fillStyle = '#17466b'; g.fillRect(0, 0, MAPW, MAPH);
   for (let i = 0; i < 340; i++) { const x = rr() * MAPW, y = rr() * MAPH; g.fillStyle = `rgba(160,210,240,${0.08 + rr() * 0.12})`; g.fillRect(x, y, 3 + rr() * 4, 1); }
   // island outline that hugs the whole chain of towns and roads
-  const allPts = []; for (let r = 1; r <= 9; r++) allPts.push(...routePoints(nodes, r));
+  const allPts = []; for (let r = 1; r <= 9; r++) allPts.push(...routePoints(nodes, r)); for (let k = 0; k < LINKS.length; k++) allPts.push(...linkPoints(nodes, k));
   const left = [], right = []; for (let y = 10; y <= MAPH - 8; y += 10) { const near = allPts.filter((p) => Math.abs(p[1] - y) < 40); const xs = near.length ? near.map((p) => p[0]) : [180]; const n1 = Math.sin(y * 0.05) * 8 + Math.sin(y * 0.13 + 1) * 5; left.push([Math.max(8, Math.min(...xs) - 70 + n1), y]); right.push([Math.min(MAPW - 8, Math.max(...xs) + 70 - n1), y]); }
   const land = new Path2D(); land.moveTo(left[0][0], left[0][1]); for (const p of left) land.lineTo(p[0], p[1]); for (const p of right.slice().reverse()) land.lineTo(p[0], p[1]); land.closePath();
   g.save(); g.strokeStyle = '#e8d49a'; g.lineWidth = 7; g.stroke(land); g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 12; g.globalAlpha = 0.4; g.stroke(land); g.restore();
@@ -138,6 +147,18 @@ function drawRegion(cv) {
     g.strokeStyle = known ? '#e8c987' : '#8a7a62'; g.lineWidth = 4; g.stroke();
     if (known) { g.setLineDash([3, 4]); g.strokeStyle = '#fff6d8'; g.lineWidth = 1; g.stroke(); g.setLineDash([]); }
     const [mx2, my2] = along(pts, 0.36); g.fillStyle = '#1b1530'; g.fillRect(mx2 - 9, my2 - 6, 18, 11); g.fillStyle = known ? '#ffd23f' : '#777'; g.font = '7px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('R' + r, mx2, my2 + 3); }
+  // loop trails, with the field skill each one needs
+  LINKS.forEach((L, k) => { const pts = linkPoints(nodes, k); const seen = s.flags['lvisit' + k]; const near = s.flags['visit' + (+L.b.slice(4))] || (L.a === 'hometown' ? true : s.flags['visit' + (+L.a.slice(4))]);
+    if (!seen && !near) return;
+    g.lineCap = 'round'; g.strokeStyle = '#3a2a1a'; g.lineWidth = 6; g.setLineDash(seen ? [] : [6, 5]); g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
+    g.strokeStyle = seen ? '#d8b878' : '#8a7a62'; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
+    [[L.needs[0], 0.2], [L.needs[1] || L.needs[0], 0.82]].forEach(([nd, f]) => { const [ox, oy] = along(pts, f); obstacleIcon(g, nd, ox, oy, !!s.skills?.[nd]); });
+    let [lx, ly] = along(pts, 0.5); g.font = '6px "Press Start 2P"'; g.textAlign = 'center'; const nm = seen ? L.name : '???'; const tw = g.measureText(nm).width; lx = Math.max(tw / 2 + 4, Math.min(MAPW - tw / 2 - 4, lx)); ly -= 12;
+    g.fillStyle = 'rgba(20,16,28,0.75)'; g.fillRect(lx - tw / 2 - 2, ly - 6, tw + 4, 9); g.fillStyle = seen ? '#ffe9a8' : '#aaa'; g.fillText(nm, lx, ly + 1); });
+  // the Azure Sea and its islands (reached by Swim)
+  { const [sx, sy] = seaSpot(nodes); const fz = s.flags.lvisit_sea; if (fz || s.skills?.swim) { g.fillStyle = 'rgba(40,120,190,0.9)'; g.beginPath(); g.ellipse(sx, sy, 26, 30, 0, 0, 7); g.fill();
+    for (const [dx, dy] of [[-10, -14], [10, -12], [-9, 12], [11, 14], [0, 0]]) { g.fillStyle = '#e8d49a'; g.beginPath(); g.arc(sx + dx, sy + dy, 5, 0, 7); g.fill(); g.fillStyle = '#5fd068'; g.beginPath(); g.arc(sx + dx, sy + dy, 3, 0, 7); g.fill(); }
+    g.font = '6px "Press Start 2P"'; g.textAlign = 'center'; g.fillStyle = '#000a'; g.fillText(fz ? 'Azure Sea' : '???', sx + 1, sy + 41); g.fillStyle = '#c8f0ff'; g.fillText(fz ? 'Azure Sea' : '???', sx, sy + 40); } }
   // in-between zones sit on every road, just before the next town
   for (let r = 1; r <= 9; r++) { const Zi = zoneInfo(r); const [zx, zy] = along(routePoints(nodes, r), ZONE_F); const seenZ = s.flags['zvisit' + r];
     if (!seenZ && !routeKnown(r)) continue;
@@ -162,8 +183,10 @@ function drawRegion(cv) {
   // you are here
   const t = (performance.now() / 300) % (Math.PI * 2); let hx = null, hy = null; const hm = here.match(/^route(\d)$/);
   if (hm) { const m = G.world.map; const f = (1 - (G.world.lp[0].y / m.h)) * (ZONE_F - 0.06); [hx, hy] = along(routePoints(nodes, +hm[1]), f); }
+  const lm = here.match(/^link(\d)$/); if (lm) { const m = G.world.map; [hx, hy] = along(linkPoints(nodes, +lm[1]), 1 - G.world.lp[0].y / m.h); hy -= 6; }
+  if (here === 'sea') { [hx, hy] = seaSpot(nodes); hy -= 10; }
   const zm = here.match(/^zone(\d)$/); if (zm) { [hx, hy] = along(routePoints(nodes, +zm[1]), ZONE_F); hy -= 8; }
-  else { const n = nodes.find((q) => q.id === here); const sc = secrets.find((q) => q.id === here); if (n) { hx = n.x; hy = n.y - 12; } else if (sc) { hx = sc.x; hy = sc.y - 8; } else if (here === 'gate') { hx = home.x + 48; hy = home.y; } }
+  else if (!lm && here !== 'sea') { const n = nodes.find((q) => q.id === here); const sc = secrets.find((q) => q.id === here); if (n) { hx = n.x; hy = n.y - 12; } else if (sc) { hx = sc.x; hy = sc.y - 8; } else if (here === 'gate') { hx = home.x + 48; hy = home.y; } }
   if (hy !== null) cv.dataset.hy = hy;
   if (hx !== null) { g.fillStyle = '#4cf0ff'; g.beginPath(); g.moveTo(hx, hy - 2 + Math.sin(t) * 2); g.lineTo(hx - 6, hy - 12 + Math.sin(t) * 2); g.lineTo(hx + 6, hy - 12 + Math.sin(t) * 2); g.closePath(); g.fill(); g.strokeStyle = '#003a44'; g.lineWidth = 1; g.stroke(); }
   // title + compass + legend
@@ -198,6 +221,12 @@ function zoneIcon(g, Z, x, y, seen) {
   if (k === 'cave') { g.fillStyle = '#8a8098'; g.beginPath(); g.arc(x, y + 6, 9, Math.PI, 0); g.fill(); g.fillStyle = '#0a0812'; g.beginPath(); g.arc(x, y + 6, 4.5, Math.PI, 0); g.fill(); }
   if (k === 'ruins') { g.fillStyle = '#d8c08a'; g.fillRect(x - 7, y - 6, 3, 12); g.fillRect(x + 4, y - 6, 3, 12); g.fillRect(x - 8, y - 8, 16, 3); g.fillRect(x - 1, y, 3, 6); }
   if (k === 'park') { const t = performance.now() / 800; g.strokeStyle = '#ffd23f'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y - 1, 7, 0, 7); g.stroke(); for (let i = 0; i < 6; i++) { const a = t + i; g.fillStyle = ['#ff4fd8', '#4cf0ff', '#5fd068'][i % 3]; g.fillRect(x + Math.cos(a) * 7 - 1, y - 1 + Math.sin(a) * 7 - 1, 3, 3); } g.fillStyle = '#b36bff'; g.fillRect(x - 2, y + 4, 4, 5); }
+}
+function obstacleIcon(g, need, x, y, have) {
+  g.fillStyle = 'rgba(20,16,28,0.85)'; g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.strokeStyle = have ? '#5fd068' : '#ff5d73'; g.lineWidth = 1.2; g.stroke();
+  if (need === 'cut') { g.fillStyle = '#3aa050'; g.beginPath(); g.moveTo(x, y - 5); g.lineTo(x - 4, y + 2); g.lineTo(x + 4, y + 2); g.fill(); g.fillStyle = '#7a5a2a'; g.fillRect(x - 1, y + 2, 2, 3); }
+  if (need === 'smash') { g.fillStyle = '#a0a0ac'; g.beginPath(); g.arc(x, y + 1, 4.5, 0, 7); g.fill(); g.strokeStyle = '#3a3a4a'; g.lineWidth = 1; g.beginPath(); g.moveTo(x - 2, y - 2); g.lineTo(x, y + 1); g.lineTo(x - 1, y + 4); g.stroke(); }
+  if (need === 'swim') { g.strokeStyle = '#4cb8ff'; g.lineWidth = 1.5; for (const dy of [-2, 2]) { g.beginPath(); g.moveTo(x - 5, y + dy); g.quadraticCurveTo(x - 2.5, y + dy - 3, x, y + dy); g.quadraticCurveTo(x + 2.5, y + dy + 3, x + 5, y + dy); g.stroke(); } }
 }
 function secretIcon(g, kind, x, y) {
   g.fillStyle = 'rgba(20,16,28,0.8)'; g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill();
@@ -314,7 +343,7 @@ export async function mastery() {
 export async function players() {
   await ui.panel({ title: 'Local Players (same screen)', wide: true, render: () => `<div class="plist">${S().players.map((p, k) => `<div class="prow"><span class="sw" style="background:${p.color}"></span><b>P${k + 1} ${esc(p.name)}</b><span class="dim">${p.party.length} in team · ${p.box.length} in box</span>${k > 0 ? `<button data-nav data-act="rm" data-arg="${k}">Remove</button>` : ''}</div>`).join('')}</div>
     ${S().players.length < 4 ? '<button data-nav data-act="add">+ Add a local player</button>' : ''}
-    <div class="ctrl"><h4>Controls</h4><p><b>1 player:</b> Arrows/WASD move · Z/Space/Enter = A · X/Esc = B · Shift/C = Run (double-tap to lock running on/off; on touch, double-tap RUN) · Tab/M = Menu</p><p><b>Field skills:</b> leaders teach <i>Slice</i> (cut thin trees), <i>Smash</i> (break cracked rocks) and <i>Soar</i> (fly from the 🗺 Map to towns you've visited). Face the obstacle and press A. Leaders also hand out reusable 💿 Technique Discs.</p><p><b>Conditions:</b> ${TYPES.flux.name} attacks can <i>burn</i> (weaker attacks + chip damage), ${TYPES.cipher.name} attacks can <i>poison</i>, and ${TYPES.data.name} attacks can make a monster <i>sick</i> (may skip turns). Any healing item or a Mend Station cures them. Insight Shards are very rare (one per badge) and only work outside battle.</p><p><b>Partner:</b> your chosen monster walks behind you — talk to it for tips. Pick a partner in Team → 🐾 Walk with me.</p><p><b>Learn more:</b> after any question, or by tapping a Codex term, see extra examples, worked questions and (if enabled) outside resources.</p><p><b>2+ players:</b> P1 WASD + F (A) / G (B) / Tab (menu) · P2 Arrows + . (A) / , (B) / / (menu) · P3 &amp; P4 use gamepads (each new pad joins the next slot). Touch controls drive P1.</p><p>Everyone shares one screen and travels together. In battle, every player's lead monster fights side by side and each player answers their own questions.</p></div>`,
+    <div class="ctrl"><h4>Controls</h4><p><b>1 player:</b> Arrows/WASD move · Z/Space/Enter = A · X/Esc = B · Shift/C = Run (double-tap to lock running on/off; on touch, double-tap RUN) · Tab/M = Menu</p><p><b>Field skills:</b> leaders teach <i>Slice</i> (cut saplings, 1st badge), <i>Smash</i> (break cracked boulders, 3rd), <i>Teleport</i> (Menu → ✨ Teleport back to any town or area you've found, from anywhere — 4th), <i>Soar</i> (fly from the 🗺 Map, 5th) and <i>Swim</i> (face water and press A to ride your monster to islands, 6th). Face the obstacle and press A. <b>Loop trails</b> on the sides of towns join cities two apart, but saplings, boulders and rivers block them until you have the right skill — check the 🗺 Map for which ones. Swim out from Mirror Lake to find the islands of the <i>Azure Sea</i>. Leaders also hand out reusable 💿 Technique Discs.</p><p><b>Conditions:</b> ${TYPES.flux.name} attacks can <i>burn</i> (weaker attacks + chip damage), ${TYPES.cipher.name} attacks can <i>poison</i>, and ${TYPES.data.name} attacks can make a monster <i>sick</i> (may skip turns). Any healing item or a Mend Station cures them. Insight Shards are very rare (one per badge) and only work outside battle.</p><p><b>Partner:</b> your chosen monster walks behind you — talk to it for tips. Pick a partner in Team → 🐾 Walk with me.</p><p><b>Learn more:</b> after any question, or by tapping a Codex term, see extra examples, worked questions and (if enabled) outside resources.</p><p><b>2+ players:</b> P1 WASD + F (A) / G (B) / Tab (menu) · P2 Arrows + . (A) / , (B) / / (menu) · P3 &amp; P4 use gamepads (each new pad joins the next slot). Touch controls drive P1.</p><p>Everyone shares one screen and travels together. In battle, every player's lead monster fights side by side and each player answers their own questions.</p></div>`,
     actions: { add: async () => { await addLocal(); }, rm: async (k) => { if (await ui.confirm(`Remove P${+k + 1} ${S().players[+k].name}? Their monsters will be lost.`)) { S().players.splice(+k, 1); S().players.forEach((p, i) => { p.color = ['#e04848', '#3a7ae0', '#30b060', '#e0a020'][i]; }); input.setPlayers(S().players.length); G.world.load(S().map, S().pos); } } } });
 }
 async function addLocal() {

@@ -1,7 +1,7 @@
 // Interaction scripts, quests and story flow.
 import { FIELD_SKILLS } from './state.js';
 import { T } from '../core/sprites.js';
-import { flyPoint } from './maps.js';
+import { flyPoint, getMap, zoneInfo } from './maps.js';
 import { G, ITEMS, makeMon, healAll, addMon, monName, maxHp, newPlayer, badgeCount, addCodex, recordAnswer } from './state.js';
 import { getWorld, topics } from './content.js';
 import { ui, fmt } from './ui.js';
@@ -56,7 +56,9 @@ export const events = {
       S().flags['visit' + map.cityIdx] = true; const c = W().cities[map.cityIdx];
       ui.toast(`New city: ${c.name} — ${c.theme}`, 3200);
     }
-    timeTick(); dailyCheck(); if (map.secret) discover(map.id); if (map.zone && !S().flags['zvisit' + map.zone]) { S().flags['zvisit' + map.zone] = 1; ui.toast(`🧭 Discovered ${map.name}!`, 2600); }
+    timeTick(); dailyCheck(); if (map.secret) discover(map.id); if (map.link !== undefined && !S().flags['lvisit' + map.link]) { S().flags['lvisit' + map.link] = 1; ui.toast(`🔁 Found a shortcut: ${map.name}!`, 3200); }
+    if (map.id === 'sea' && !S().flags.lvisit_sea) { S().flags.lvisit_sea = 1; ui.toast('🌊 You swam out to the Azure Sea!', 3200); }
+    if (map.zone && !S().flags['zvisit' + map.zone]) { S().flags['zvisit' + map.zone] = 1; ui.toast(`🧭 Discovered ${map.name}!`, 2600); }
     if (map.era && !S().flags['eravisit_' + map.era]) { S().flags['eravisit_' + map.era] = 1; ui.toast(map.era === 'past' ? '⏪ You travelled into the past!' : '⏩ You travelled into the future!', 3200); }
     if (map.id === 'hometown' && !S().flags['seasontoast_' + season().key + new Date().getFullYear()] && S().flags.starter) { S().flags['seasontoast_' + season().key + new Date().getFullYear()] = 1; ui.toast(`${season().icon} ${season().name} has arrived! The Season Herald in Origin Town has a gift.`, 4200); }
     this.checkObjective(); autosave();
@@ -90,6 +92,32 @@ export const events = {
       const ob = (G.world.map.obstacles || []).find((o) => o[0] === x && o[1] === y); G.world.map.set(x, y, ob ? ob[3] : T.GRASS); G.world.rebake();
       autosave();
     } finally { G.busy--; }
+  },
+  async swim(p, tx, ty) {
+    if (G.busy) return; const map = G.world.map; if (map.kind === 'inside' || map.sky) { if (map.sky) { G.busy++; await say('Those are clouds, not water! Nothing could swim through that.'); G.busy--; } return; }
+    G.busy++; let go = false;
+    try {
+      const sk = FIELD_SKILLS.swim;
+      if (!S().skills.swim) { await say(['The water is deep and blue.', `A monster could carry you across with *${sk.name}*. The ${sk.disc} is awarded by the 6th Mastery Hall Leader.`]); return; }
+      const pl = S().players[p.i || 0] || S().players[0]; const m = pl.party.find((q) => q.hp > 0);
+      if (!m) { await say('None of your monsters are fit to swim.'); return; }
+      if (!(await ui.confirm(`The water looks calm. Ride ${monName(W(), m)} and Swim?`))) return;
+      await say(`${monName(W(), m)} used *Swim*! Hop on!`); audio.sfx('blip'); go = true;
+    } finally { G.busy--; }
+    if (go) { for (const q of G.world.lp) q.surf = true; G.world.tryMove(p, p.dir); }
+  },
+  teleportSpots() {
+    const s = S(), Wd = W(); const out = [{ id: 'hometown', name: 'Origin Town', icon: '🏠' }];
+    Wd.cities.forEach((c, i) => { if (s.flags['visit' + i]) out.push({ id: 'city' + i, name: c.name, icon: s.badges[i] ? '🏅' : '🏙' }); });
+    for (let r = 1; r <= 9; r++) if (s.flags['zvisit' + r]) out.push({ id: 'zone' + r, name: zoneInfo(r).name, icon: '🧭' });
+    if (s.flags.lvisit_sea) out.push({ id: 'sea', name: 'Azure Sea — Turtle Isle', icon: '🌊' });
+    return out;
+  },
+  async teleport(id) {
+    let x, y; if (id.startsWith('zone')) { const zm = getMap(W(), id); x = 14; y = zm.h - 3; } else if (id === 'sea') { x = 8; y = 6; } else [x, y] = flyPoint(W(), id);
+    const p = S().players[0]; const m = p.party.find((q) => q.hp > 0) || p.party[0]; const nm = this.teleportSpots().find((q) => q.id === id)?.name || '';
+    await say(`${m ? monName(W(), m) : p.name} used *Teleport*! Warping to ${nm}…`);
+    audio.sfx('evolve'); await G.world.warp(id, x, y, 'down');
   },
   async fly(mapId) {
     const [x, y] = flyPoint(W(), mapId); const name = mapId === 'hometown' ? 'Origin Town' : W().cities[+mapId.slice(4)].name;

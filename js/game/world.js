@@ -33,7 +33,8 @@ export class World {
     this.objs = m.objs.map((o, i) => ({ ...o, ox: o.x, oy: o.y, px: o.x * TS, py: o.y * TS, i, wt: 1 + R() * 3, sheet: PEOPLE.has(o.kind) ? personSheet(this.palFor(o, i)) : null }));
     this.lp = S.players.map((p, i) => { const s = (spots && spots[i]) || S.pos[i] || S.pos[0]; return { i, x: s.x, y: s.y, px: s.x * TS, py: s.y * TS, dir: s.dir || 'down', moving: false, sheet: personSheet(playerPalette(p, i)) }; });
     // never spawn inside a wall (e.g. after a layout change)
-    for (const p of this.lp) if (this.solid(p.x, p.y) && !m.warps.some((w) => w.x === p.x && w.y === p.y)) { let best = null; for (let r = 1; r < 8 && !best; r++) for (let dy = -r; dy <= r && !best; dy++) for (let dx = -r; dx <= r && !best; dx++) if (!this.solid(p.x + dx, p.y + dy) && !m.warps.some((w) => w.x === p.x + dx && w.y === p.y + dy)) best = [p.x + dx, p.y + dy]; if (best) { [p.x, p.y] = best; p.px = p.x * 16; p.py = p.y * 16; } }
+    for (const p of this.lp) if (this.solid(p.x, p.y) && m.get(p.x, p.y) !== T.WATER && !m.warps.some((w) => w.x === p.x && w.y === p.y)) { let best = null; for (let r = 1; r < 8 && !best; r++) for (let dy = -r; dy <= r && !best; dy++) for (let dx = -r; dx <= r && !best; dx++) if (!this.solid(p.x + dx, p.y + dy) && !m.warps.some((w) => w.x === p.x + dx && w.y === p.y + dy)) best = [p.x + dx, p.y + dy]; if (best) { [p.x, p.y] = best; p.px = p.x * 16; p.py = p.y * 16; } }
+    for (const p of this.lp) p.surf = m.get(p.x, p.y) === T.WATER;
     // spread co-op players who would overlap
     const taken = new Set();
     for (const p of this.lp) {
@@ -146,7 +147,8 @@ export class World {
       if ((g.flag && !G.save.flags[g.flag]) || (g.badge !== undefined && !G.save.badges[g.badge])) { G.events.gateBlocked(m, p); return; }
     }
     const warp = m.warps.find((w) => w.x === nx && w.y === ny);
-    if (this.solid(nx, ny) && !warp) { if (this.bumpT <= 0) { audio.sfx('bump'); this.bumpT = 0.3; } return; }
+    const swimOk = p.surf && m.get(nx, ny) === T.WATER && !this.objAt(nx, ny);
+    if (this.solid(nx, ny) && !warp && !swimOk) { if (this.bumpT <= 0) { audio.sfx('bump'); this.bumpT = 0.3; } return; }
     // keep local co-op players on one screen
     if (this.lp.length > 1) {
       const xs = this.lp.map((q) => (q === p ? nx : q.x)), ys = this.lp.map((q) => (q === p ? ny : q.y));
@@ -161,7 +163,9 @@ export class World {
     const m = this.map; this.savePos(); G.net?.sendPos?.();
     const w = m.warps.find((q) => q.x === p.x && q.y === p.y);
     if (w) { this.warp(w.to, w.tx, w.ty, w.dir || p.dir, w); return; }
+    if (p.surf && m.get(p.x, p.y) !== T.WATER) { p.surf = false; audio.sfx('blip'); }
     if (G.busy) return;
+    if (p.surf && m.encounter && !m.noEncounters) { if (this.noEnc > 0) this.noEnc--; else if (R() < 0.04) { G.events.wild(p); return; } }
     if (m.encounter && m.get(p.x, p.y) === T.TALL) {
       if (this.noEnc > 0) this.noEnc--; else if (R() < 0.085) { G.events.wild(p); return; }
     }
@@ -174,6 +178,7 @@ export class World {
     if (!o && this.map.get(tx, ty) === T.COUNTER) o = this.objAt(tx + DX[p.dir][0], ty + DX[p.dir][1]);
     if (o) { if (PEOPLE.has(o.kind) && !o.fixedDir) o.dir = { up: 'down', down: 'up', left: 'right', right: 'left' }[p.dir]; G.events.interact(o, p.i); }
     else if (this.map.clearable && this.map.clearable.has(this.map.get(tx, ty))) G.events.fieldObstacle(this.map.get(tx, ty), tx, ty, p.i);
+    else if (!p.surf && this.map.get(tx, ty) === T.WATER) G.events.swim(p, tx, ty);
   }
   async warp(to, tx, ty, dir, w) {
     G.busy++; G.warping = true; audio.sfx(w && (w.door || w.stairs) ? 'door' : 'blip');
@@ -206,7 +211,8 @@ export class World {
     if (!inside) drawShore(g, m, cx, cy, this.t, BIOMES[B]);
     for (const o of this.objs) { if (!this.visible(o)) continue; ents.push({ y: o.py + 4, draw: () => this.drawObj(g, o, cx, cy) }); }
     const f = this.fol; const fm = f && this.followMon(); const p0 = this.lp[0];
-    if (fm && fm.hp > 0 && !(f.x === p0.x && f.y === p0.y && !f.moving)) ents.push({ y: f.py + 4.05, draw: () => this.drawPartner(g, f, fm, f.px - cx, f.py - cy) });
+    if (fm && fm.hp > 0 && !p0.surf && !(f.x === p0.x && f.y === p0.y && !f.moving)) ents.push({ y: f.py + 4.05, draw: () => this.drawPartner(g, f, fm, f.px - cx, f.py - cy) });
+    for (const p of this.lp) if (p.surf) ents.push({ y: p.py + 4.08, draw: () => this.drawSurf(g, p, p.px - cx, p.py - cy) });
     for (const p of this.lp) ents.push({ y: p.py + 4.1, draw: () => this.drawPerson(g, p.sheet, p.px - cx, p.py - cy, p.dir, p.moving ? (Math.floor(p.mt * 2) % 2) + 1 : 0, this.lp.length > 1 ? 'P' + (p.i + 1) : null, G.save.players[p.i].color, p) });
     for (const pr of G.net?.peersHere?.() || []) { const d = this.peerDraw[pr.id]; if (!d) continue; const sheet = pr.sheet || (pr.sheet = personSheet(personPalette(hash(pr.name), { shirt: pr.color || '#888' }))); const mv = Math.abs(d.x - pr.x * TS) + Math.abs(d.y - pr.y * TS) > 1; ents.push({ y: d.y + 4, draw: () => { this.drawPerson(g, sheet, d.x - cx, d.y - cy, pr.dir || 'down', mv ? (Math.floor(this.t * 6) % 2) + 1 : 0, pr.name, pr.color || '#888', { x: Math.round(d.x / TS), y: Math.round(d.y / TS) }); if (pr.bubble && pr.bubbleUntil > Date.now()) this.bubble(g, d.x - cx + 8, d.y - cy - 14, pr.bubble); } }); }
     ents.sort((a, b) => a.y - b.y).forEach((e) => e.draw());
@@ -227,8 +233,8 @@ export class World {
     if (input.runLock.some((v, i) => v && i < this.lp.length)) { g.font = '8px "Press Start 2P"'; g.textAlign = 'right'; const tx = 'RUN ON'; const w = g.measureText(tx).width + 8; g.fillStyle = 'rgba(20,16,28,0.8)'; g.fillRect(view.w - w - 4, view.h - 16, w, 12); g.fillStyle = '#ffd23f'; g.fillText(tx, view.w - 8, view.h - 7); }
   }
   drawPerson(g, sheet, x, y, dir, f, tag, col, p) {
-    x = Math.round(x); y = Math.round(y);
-    g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x + 3, y + 13, 10, 3);
+    x = Math.round(x); y = Math.round(y); if (p && p.surf) { y -= 9; f = 0; }
+    if (!(p && p.surf)) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x + 3, y + 13, 10, 3); }
     g.drawImage(sheet, f * 16, DIR_ROW[dir] * 20, 16, 20, x, y - 6, 16, 20);
     if (p && this.map.get(p.x, p.y) === T.TALL && !p.moving) { const atlas = tileAtlas(this.map.biome, Math.floor(this.t * 2) % 2); g.drawImage(atlas, T.TALL * TS, 8, TS, 8, x, y + 8, TS, 8); }
     if (tag) { g.font = '8px "VT323"'; g.textAlign = 'center'; const w = g.measureText(tag).width + 4; g.fillStyle = col; g.fillRect(x + 8 - w / 2, y - 15, w, 8); g.fillStyle = '#fff'; g.fillText(tag, x + 8, y - 8.5); }
@@ -249,6 +255,12 @@ export class World {
     if (o.kind === 'ride') { drawObject(g, 'ride_' + o.ride, Math.round(x), Math.round(y), this.t); return; }
     drawObject(g, o.kind === 'rift' && (G.save.echoes || []).some((e) => e.due <= Date.now()) ? 'riftdue' : o.kind, Math.round(x), Math.round(y), this.t);
     if (o.kind === 'station') { g.fillStyle = '#ffd23f'; g.font = '8px "Press Start 2P"'; g.textAlign = 'center'; g.fillText({ match: '≡', sequence: '#', speed: '!' }[o.game], Math.round(x) + 8, Math.round(y) - 1 + Math.sin(this.t * 3) * 1.5); }
+  }
+  drawSurf(g, p, x, y) {
+    const pl = G.save.players[p.i]; const m = pl.party.find((q) => q.hp > 0) || pl.party[0]; const t = this.t;
+    g.fillStyle = 'rgba(255,255,255,0.55)'; for (let i = 0; i < 3; i++) { const a = t * 3 + i * 2.1; g.fillRect(Math.round(x + 8 + Math.cos(a) * 11), Math.round(y + 14 + Math.sin(a) * 3), 3, 1); }
+    if (!m) return; const img = monsterCanvas(G.W.species[m.sp], p.dir === 'up', lookOf(m)); const bob = Math.round(Math.sin(t * 4) * 1);
+    g.drawImage(img, Math.round(x - 6), Math.round(y - 13 + bob), 28, 28);
   }
   drawPartner(g, f, m, x, y) {
     const sp = G.W.species[m.sp]; if (!sp) return;

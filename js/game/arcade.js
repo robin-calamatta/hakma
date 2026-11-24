@@ -197,7 +197,7 @@ export const arcadeHandlers = {
 import { runBattle } from './battle.js';
 import { afterBattle } from './events.js';
 import { RARITY } from './content.js';
-export const SECRET_IDS = (W) => [...[2, 3, 4, 5, 6, 7, 8].map((r) => 'grove' + r), ...[0, 1, 2, 3].map((k) => 'lair' + k), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => 'garden' + i), 'sanctum'];
+export const SECRET_IDS = (W) => [...[2, 3, 4, 5, 6, 7, 8].map((r) => 'grove' + r), ...[0, 1, 2, 3].map((k) => 'lair' + k), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => 'garden' + i), 'sea', 'sanctum'];
 export function discover(id) {
   const s = S(); if (!SECRET_IDS(W()).includes(id) || s.flags['found_' + id]) return;
   s.flags['found_' + id] = 1; const n = SECRET_IDS(W()).filter((x) => s.flags['found_' + x]).length;
