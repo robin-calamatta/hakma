@@ -31,6 +31,7 @@ class Layer {
       const cols = this.opts.cols || 1; let step = 0;
       if (d === 'up') step = -cols; if (d === 'down') step = cols; if (d === 'left') step = -1; if (d === 'right') step = 1;
       if (this.opts.onLR && (d === 'left' || d === 'right')) { this.opts.onLR(d === 'left' ? -1 : 1, this); return; }
+      if (this.opts.spatial || cols > 1) { const j = spatialStep(n, this.idx, d); if (j >= 0) { this.idx = j; audio.sfx('blip'); this.highlight(); } else if (this.opts.onEdge) this.opts.onEdge(d, this); return; }
       if (step) { this.idx = (this.idx + step + n.length) % n.length; audio.sfx('blip'); this.highlight(); }
     }
     if (input.anyPressed('a') >= 0 && n[this.idx]) { audio.sfx('select'); n[this.idx].click(); return; }
@@ -39,6 +40,15 @@ class Layer {
   close(v) { if (this.closed) return; this.closed = true; this.el.remove(); ui.stack = ui.stack.filter((l) => l !== this); if (this.opts.onClose) this.opts.onClose(v); }
 }
 
+// move focus to the nearest button in the pressed direction (works for grids, columns and gaps left by disabled buttons)
+export function spatialStep(n, idx, d) {
+  const c = n[idx]; if (!c) return 0; const r0 = c.getBoundingClientRect(); const cx = r0.left + r0.width / 2, cy = r0.top + r0.height / 2;
+  let best = -1, bs = Infinity;
+  n.forEach((e, i) => { if (i === idx) return; const r = e.getBoundingClientRect(); const ex = r.left + r.width / 2, ey = r.top + r.height / 2; const dx = ex - cx, dy = ey - cy;
+    const main = d === 'left' ? -dx : d === 'right' ? dx : d === 'up' ? -dy : dy; const side = d === 'left' || d === 'right' ? Math.abs(dy) : Math.abs(dx);
+    if (main <= 4 || ((d === 'left' || d === 'right') && side > main * 1.2)) return; const sc = main + side * 2.5; if (sc < bs) { bs = sc; best = i; } });
+  return best;
+}
 export const ui = {
   stack: [],
   get open() { return this.stack.length > 0; },
@@ -77,10 +87,10 @@ export const ui = {
   },
   async confirm(text) { return (await this.choose(text, ['Yes', 'No'])) === 0; },
   // generic panel: render() returns html; actions map data-act to handlers
-  panel({ title, render, actions = {}, cls = '', cols, onLR, wide }) {
+  panel({ title, render, actions = {}, cls = '', cols, onLR, wide, spatial, onEdge }) {
     return new Promise((res) => {
       const shell = (body) => `<div class="panel ${wide ? 'wide' : ''} ${cls}"><div class="ptitle"><span>${title}</span><button class="x" data-act="__close">✕</button></div><div class="pbody">${body}</div></div>`;
-      const l = this.layer(shell(render()), { cols, onLR: onLR && ((d) => onLR(d, rerender)), onBack: () => { l.close(); res(); }, onClose: () => res() });
+      const l = this.layer(shell(render()), { cols, spatial, onEdge: onEdge && ((d, L) => onEdge(d, rerender, L)), onLR: onLR && ((d) => onLR(d, rerender)), onBack: () => { l.close(); res(); }, onClose: () => res() });
       const rerender = () => { if (!l.closed) { l.refresh(shell(render())); wire(); } };
       const wire = () => l.el.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async (e) => {
         e.stopPropagation(); const a = b.dataset.act; if (a === '__close') { l.close(); res(); return; }

@@ -390,26 +390,31 @@ export async function archive() {
   let p = 0, bx = 0; const P0 = () => S().players[p];
   const inBox = (b) => P0().box.filter((m) => (m.boxN || 0) === b);
   const cell = (m) => { const sp = W().species[m.sp]; return `<img class="mini" src="${G.mini(sp, lookOf(m))}"><span class="bn">${esc(monName(W(), m))}</span><span class="bl">Lv${m.lvl} <i class="type t-${sp.type}">${TYPES[sp.type].name}</i></span>`; };
+  const pickBox = async (skip) => { const opts = Array.from({ length: BOX_COUNT }, (_, q) => `Box ${q + 1}  (${inBox(q).length}/${BOX_SIZE})${q === skip ? ' · here now' : inBox(q).length >= BOX_SIZE ? ' · full' : ''}`);
+    const b = await ui.choose('Which box?', opts); if (b < 0) return -1; if (b === skip) return -1; if (inBox(b).length >= BOX_SIZE) { ui.toast(`Box ${b + 1} is full.`); return -1; } return b; };
   const store = (m) => { const P = P0(); if (P.party.length <= 1) { ui.toast('You must keep at least one monster.'); return false; } if (inBox(bx).length >= BOX_SIZE) { ui.toast(`Box ${bx + 1} is full — use ◀ ▶ to pick another box.`); return false; }
     P.party.splice(P.party.indexOf(m), 1); healMon(W(), m); m.boxN = bx; P.box.push(m); if (S().follower === m.uid) { S().follower = null; G.world?.initFollower(); } audio.sfx('door'); ui.toast(`${monName(W(), m)} was stored in Box ${bx + 1}.`); return true; };
   const take = (m, swapWith) => { const P = P0(); P.box.splice(P.box.indexOf(m), 1); healMon(W(), m);
     if (swapWith) { const k = P.party.indexOf(swapWith); P.party[k] = m; healMon(W(), swapWith); swapWith.boxN = bx; P.box.push(swapWith); if (S().follower === swapWith.uid) { S().follower = null; G.world?.initFollower(); } ui.toast(`${monName(W(), m)} swapped in for ${monName(W(), swapWith)}.`); }
     else { P.party.push(m); ui.toast(`${monName(W(), m)} joined your team!`); } audio.sfx('door'); };
-  await ui.panel({ title: 'Archive Box Terminal', wide: true, cls: 'archive', onLR: (d, rr) => { bx = (bx + d + BOX_COUNT) % BOX_COUNT; audio.sfx('select'); rr(); },
+  const focusBox = (L) => { const n = L.navs(); const i = n.findIndex((e) => e.classList.contains('bcell')); L.idx = i >= 0 ? i : Math.max(0, n.findIndex((e) => e.dataset.act === 'bx' && e.dataset.arg === '1')); L.highlight(); };
+  await ui.panel({ title: 'Archive Box Terminal', wide: true, cls: 'archive', spatial: true,
+    // right past the last box column flips to the next box; left past the team column flips back
+    onEdge: (d, rr, L) => { const cur = L.navs()[L.idx]; if (d === 'right' && cur && (cur.classList.contains('bcell') || cur.dataset.act === 'bx')) { bx = (bx + 1) % BOX_COUNT; audio.sfx('select'); rr(); focusBox(L); } else if (d === 'left' && cur && cur.dataset.act === 'tm') { bx = (bx + BOX_COUNT - 1) % BOX_COUNT; audio.sfx('select'); rr(); L.idx = L.navs().indexOf(L.navs().find((e) => e.dataset.act === 'tm' && e.dataset.arg === cur.dataset.arg)); L.highlight(); } },
     render: () => { const P = P0(); const list = inBox(bx); return `${S().players.length > 1 ? `<div class="tabs">${S().players.map((q, k) => `<button data-nav data-act="pl" data-arg="${k}" class="${k === p ? 'on' : ''}" style="border-color:${q.color}">P${k + 1} ${esc(q.name)}</button>`).join('')}</div>` : ''}
       <div class="cols"><div><h4>Team (${P.party.length}/6)</h4>${P.party.map((m, k) => `<button data-nav data-act="tm" data-arg="${k}" class="mrow">${monRow(W(), m)}</button>`).join('')}</div>
       <div><div class="boxnav"><button data-nav data-act="bx" data-arg="-1">◀</button><h4>Box ${bx + 1} <small>(${list.length}/${BOX_SIZE})</small></h4><button data-nav data-act="bx" data-arg="1">▶</button></div>
       <div class="boxgrid">${list.map((m) => `<button data-nav data-act="bm" data-arg="${P.box.indexOf(m)}" class="bcell">${cell(m)}</button>`).join('') || '<p class="dim">This box is empty.</p>'}</div></div></div>
-      <p class="dim">Pick a monster for options. ◀ ▶ (or the arrow buttons) flip between boxes. Stored monsters are healed automatically. All boxes hold ${P.box.length} monsters.</p>`; },
+      <p class="dim">Pick a monster for options. Press → from your team to jump into the box; keep going → past the last column (or use ◀ ▶) to flip boxes, ← from your team goes back a box. Stored monsters are healed automatically. All boxes hold ${P.box.length} monsters.</p>`; },
     actions: {
       pl: (k) => { p = +k; },
       bx: (d) => { bx = (bx + +d + BOX_COUNT) % BOX_COUNT; audio.sfx('select'); },
-      tm: async (k) => { const m = P0().party[+k]; if (!m) return; const c = await ui.choose(`${monName(W(), m)} · Lv ${m.lvl} ${TYPES[W().species[m.sp].type].name}`, [`📦 Store in Box ${bx + 1}`, 'Summary', 'Cancel']); if (c === 0) store(m); if (c === 1) await summary(m); },
+      tm: async (k) => { const m = P0().party[+k]; if (!m) return; const c = await ui.choose(`${monName(W(), m)} · Lv ${m.lvl} ${TYPES[W().species[m.sp].type].name}`, [`📦 Store in Box ${bx + 1}`, '📦 Store in another box…', 'Summary', 'Cancel']); if (c === 0) store(m); if (c === 1) { const b = await pickBox(-1); if (b >= 0) { const keep = bx; bx = b; store(m); bx = keep; } } if (c === 2) await summary(m); },
       bm: async (k) => { const P = P0(); const m = P.box[+k]; if (!m) return; const full = P.party.length >= 6;
         const opts = [full ? '🔁 Swap with a team monster' : '➕ Add to team', '📦 Move to another box', 'Summary', 'Cancel'];
         const c = await ui.choose(`${monName(W(), m)} · Lv ${m.lvl} ${TYPES[W().species[m.sp].type].name}`, opts);
         if (c === 0) { if (!full) take(m); else { const t = await ui.choose(`Swap ${monName(W(), m)} with which team monster?`, P.party.map((q) => ({ html: monRow(W(), q) })), { cls: 'teamlist' }); if (t >= 0) take(m, P.party[t]); } }
-        if (c === 1) { const b = await ui.choose('Move to which box?', Array.from({ length: BOX_COUNT }, (_, q) => ({ label: `Box ${q + 1} (${inBox(q).length}/${BOX_SIZE})`, disabled: q === bx || inBox(q).length >= BOX_SIZE })), { cols: 2 }); if (b >= 0) { m.boxN = b; ui.toast(`Moved to Box ${b + 1}.`); } }
+        if (c === 1) { const b = await pickBox(bx); if (b >= 0) { m.boxN = b; audio.sfx('door'); ui.toast(`Moved to Box ${b + 1}.`); } }
         if (c === 2) await summary(m); },
     } });
 }
