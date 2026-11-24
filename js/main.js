@@ -24,7 +24,15 @@ audio.setVolume('music', G.settings.music); audio.setVolume('sfx', G.settings.sf
 const miniCache = new Map();
 G.mini = (sp) => { const k = sp.uidKey; if (!miniCache.has(k)) miniCache.set(k, monsterCanvas(sp, false).toDataURL()); return miniCache.get(k); };
 G.icons = itemIcon;
-G.autosave = (force) => { if (!G.save || G.title) return; writeSlot(G.slot, G.save); if (CONFIG.ONLINE || CONFIG.CLOUD_SAVES) net.pushSave(G.slot, G.save, force); };
+// Saving plays a soft chime and flashes a 💾 badge (at most every few seconds, and never while the app is in the background).
+let lastSaveCue = 0;
+function saveCue() {
+  if (document.hidden || performance.now() - lastSaveCue < 4000) return; lastSaveCue = performance.now();
+  audio.sfx('save'); let b = document.getElementById('savecue');
+  if (!b) { b = document.createElement('div'); b.id = 'savecue'; b.textContent = '💾 Saved'; document.body.appendChild(b); }
+  b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+}
+G.autosave = (force) => { if (!G.save || G.title) return; writeSlot(G.slot, G.save); saveCue(); if (CONFIG.ONLINE || CONFIG.CLOUD_SAVES) net.pushSave(G.slot, G.save, force); };
 setInterval(() => G.autosave(), 30000);
 addEventListener('beforeunload', () => G.autosave(true));
 document.addEventListener('visibilitychange', () => { if (document.hidden) { audio.pause(); G.autosave(true); } else if (document.hasFocus()) audio.unpause(); });

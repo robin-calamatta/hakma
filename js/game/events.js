@@ -342,8 +342,10 @@ async function previewChoose(sp, text) {
 
 // Subject picker is two steps: pick a category, then a subject inside it (grouped so the list stays short).
 const TOPIC_GROUPS = [
-  { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, cloud, DevOps and engineering interviews.', sections: [['Programming', ['cs', 'python', 'golang', 'softeng']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
-  { id: 'elec', icon: '⚡', name: 'Electrical & Trades', blurb: 'Circuits, power and the electrician trade.', sections: [['Electrical', ['electrical', 'electrician']]] },
+  { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, cloud, DevOps and engineering interviews.', sections: [['Programming', ['cs', 'python', 'java', 'golang', 'softeng']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
+  { id: 'lang', icon: '🌍', name: 'World Languages', blurb: 'Learn to speak French, Spanish or Maltese.', sections: [['Languages', ['french', 'spanish', 'maltese']]] },
+  { id: 'elec', icon: '🔧', name: 'Trades & Engineering', blurb: 'Circuits, the electrician trade, and cars & engines.', sections: [['Electrical', ['electrical', 'electrician']], ['Automotive', ['automotive']]] },
+  { id: 'biz', icon: '💼', name: 'Business & Finance', blurb: 'Budgeting, investing, running a business and taxes.', sections: [['Money & Business', ['finance']]] },
   { id: 'school', icon: '🏫', name: 'School Subjects', blurb: 'Math, language arts and science by grade.', sections: [['Math', ['math-elem', 'math-middle', 'math-high']], ['Language Arts', ['ela-elem', 'ela-high']], ['Science', ['science-elem', 'physics', 'chemistry', 'biology']]] },
 ];
 export async function chooseTopic() {

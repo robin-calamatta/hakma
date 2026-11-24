@@ -3,6 +3,7 @@ const K = 'https://kubernetes.io/docs/';
 const P = 'https://docs.python.org/3/';
 const GO = 'https://go.dev/';
 const TF = 'https://developer.hashicorp.com/terraform/';
+const JA = 'https://docs.oracle.com/en/java/javase/21/docs/api/java.base/';
 
 export const DOCS = {
   kubernetes: { name: 'Kubernetes docs', map: {
@@ -65,6 +66,16 @@ export const DOCS = {
     'Graceful shutdown': 'https://pkg.go.dev/net/http#Server.Shutdown', 'Timeouts': 'https://pkg.go.dev/net/http#Server', 'Scheduler (GMP)': 'https://pkg.go.dev/runtime', 'GOMAXPROCS': 'https://pkg.go.dev/runtime#GOMAXPROCS',
     'Garbage collector': GO + 'doc/gc-guide', 'pprof': 'https://pkg.go.dev/runtime/pprof', 'Benchmark': 'https://pkg.go.dev/testing#hdr-Benchmarks', 'Static binary': 'https://pkg.go.dev/cmd/cgo',
     'Cross-compilation': GO + 'doc/install/source#environment',
+  } },
+  java: { name: 'Java docs', map: {
+    'String': JA + 'java/lang/String.html', 'Wrapper class': JA + 'java/lang/Integer.html', 'record': JA + 'java/lang/Record.html', 'ArrayList': JA + 'java/util/ArrayList.html',
+    'LinkedList': JA + 'java/util/LinkedList.html', 'HashMap': JA + 'java/util/HashMap.html', 'HashSet': JA + 'java/util/HashSet.html', 'TreeMap': JA + 'java/util/TreeMap.html',
+    'equals & hashCode': JA + 'java/lang/Object.html#hashCode()', 'Iterator': JA + 'java/util/Iterator.html', 'Exception': JA + 'java/lang/Exception.html', 'NullPointerException': JA + 'java/lang/NullPointerException.html',
+    'Optional': JA + 'java/util/Optional.html', 'Functional interface': JA + 'java/util/function/package-summary.html', 'Stream': JA + 'java/util/stream/Stream.html',
+    'map / filter': JA + 'java/util/stream/Stream.html', 'collect': JA + 'java/util/stream/Collectors.html', 'reduce': JA + 'java/util/stream/Stream.html', 'Thread': JA + 'java/lang/Thread.html',
+    'ExecutorService': JA + 'java/util/concurrent/ExecutorService.html', 'CompletableFuture': JA + 'java/util/concurrent/CompletableFuture.html', 'Virtual thread': 'https://openjdk.org/jeps/444',
+    'Sealed class': 'https://openjdk.org/jeps/409', 'var': 'https://openjdk.org/jeps/286', 'OutOfMemoryError': JA + 'java/lang/OutOfMemoryError.html', 'JUnit': 'https://junit.org/junit5/docs/current/user-guide/',
+    'Spring Boot': 'https://spring.io/projects/spring-boot', 'Maven / Gradle': 'https://maven.apache.org/guides/getting-started/', 'Dependency injection': 'https://docs.spring.io/spring-framework/reference/core/beans/dependencies/factory-collaborators.html',
   } },
   terraform: { name: 'Terraform docs', map: {
     'Infrastructure as Code': TF + 'intro', 'Declarative': TF + 'language', 'HCL': TF + 'language/syntax/configuration', 'Resource block': TF + 'language/resources/syntax',

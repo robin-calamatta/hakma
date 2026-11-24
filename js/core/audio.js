@@ -170,6 +170,7 @@ class Chip {
     const seq = (notes, step, vol = 0.18, wave = 0.25) => notes.forEach((m, i) => m && this.tone(d, m, t + i * step, step * 0.95, vol, wave));
     switch (name) {
       case 'blip': seq([84], 0.04, 0.12, 0.5); break;
+      case 'save': seq([79, 0, 84, 91], 0.06, 0.11, 'tri'); break; // soft "ding-ding" when the game saves
       case 'select': seq([76, 88], 0.05, 0.15); break;
       case 'back': seq([72, 64], 0.05, 0.12); break;
       case 'bump': seq([40], 0.07, 0.15, 'tri'); break;

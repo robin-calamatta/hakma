@@ -11,6 +11,7 @@ const CTX = {
   golang: 'Go programming language', terraform: 'Terraform HashiCorp', electrical: 'electrical engineering', electrician: 'electrical wiring',
   'math-elem': 'mathematics', 'math-middle': 'mathematics', 'math-high': 'mathematics', 'ela-elem': 'English grammar', 'ela-high': 'English grammar',
   'science-elem': 'science', physics: 'physics', chemistry: 'chemistry', biology: 'biology',
+  java: 'Java programming', french: 'French language', spanish: 'Spanish language', maltese: 'Maltese language', automotive: 'automobile engine', finance: 'personal finance Canada',
 };
 const SIMPLE_WIKI = new Set(['math-elem', 'ela-elem', 'science-elem']);
 // one specialist site per topic (opened via "first result")
@@ -21,6 +22,8 @@ const SITE = {
   'math-elem': ['Khan Academy', 'khanacademy.org'], 'math-middle': ['Khan Academy', 'khanacademy.org'], 'math-high': ['Khan Academy', 'khanacademy.org'],
   'ela-elem': ['Khan Academy', 'khanacademy.org'], 'ela-high': ['Purdue OWL', 'owl.purdue.edu'], 'science-elem': ['Khan Academy', 'khanacademy.org'],
   physics: ['Khan Academy', 'khanacademy.org'], chemistry: ['LibreTexts', 'chem.libretexts.org'], biology: ['Khan Academy', 'khanacademy.org'],
+  java: ['Baeldung', 'baeldung.com'], french: ['Lawless French', 'lawlessfrench.com'], spanish: ['SpanishDict', 'spanishdict.com'], maltese: ['Learn Maltese (Wiktionary)', 'en.wiktionary.org'],
+  automotive: ['HowStuffWorks', 'auto.howstuffworks.com'], finance: ['Canada.ca', 'canada.ca'],
 };
 const clean = (term) => term.replace(/[()]/g, ' ').replace(/\s+\/\s+/g, ' ').replace(/\s+/g, ' ').trim();
 const lucky = (q, site) => `https://duckduckgo.com/?q=${encodeURIComponent('\\' + q + (site ? ' site:' + site : ''))}`;
@@ -33,6 +36,7 @@ export function resourceLinks(topicId, term) {
   out.push({ name: wiki === 'simple' ? 'Simple Wikipedia' : 'Wikipedia', wiki, q: `${q} ${ctx}`.trim(), fallback: lucky(`${q} ${ctx}`, `${wiki}.wikipedia.org`) });
   const s = SITE[topicId]; if (s) out.push({ name: s[0], url: lucky(`${q} ${ctx}`, s[1]) });
   if (topicId.startsWith('ela')) out.push({ name: 'Dictionary', url: `https://www.merriam-webster.com/dictionary/${encodeURIComponent(q.split(' ')[0].toLowerCase())}` });
+  if (topicId === 'french' || topicId === 'spanish') out.push({ name: 'WordReference', url: `https://www.wordreference.com/${topicId === 'french' ? 'fren' : 'esen'}/${encodeURIComponent(q.replace(/[?!¿¡…]/g, '').trim().toLowerCase())}` });
   return out;
 }
 
