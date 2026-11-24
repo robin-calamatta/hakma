@@ -13,6 +13,8 @@ import { TYPES, beats, weakTo } from '../content/types.js';
 import { SOLID } from '../core/sprites.js';
 import * as menus from './menus.js';
 import * as puzzles from './puzzles.js';
+import { timeHandlers, timeTick, dailyCheck, eraQFn, season } from './time.js';
+import { dueEchoes } from './state.js';
 
 const LEAD = ['Here\'s something worth knowing:', 'Pro tip:', 'Interviewers love this one:', 'I wrote this down in my notes:', 'Remember this:', 'Fun fact:'];
 const TRAINER_LINES = ['Let\'s see what you\'ve learned!', 'My monsters study every night. Do yours?', 'Answer fast or get flattened!', 'I just read the docs on this. Bring it!', 'Knowledge check! Ready?', 'You look like you need some practice!'];
@@ -53,6 +55,9 @@ export const events = {
       S().flags['visit' + map.cityIdx] = true; const c = W().cities[map.cityIdx];
       ui.toast(`New city: ${c.name} — ${c.theme}`, 3200);
     }
+    timeTick(); dailyCheck();
+    if (map.era && !S().flags['eravisit_' + map.era]) { S().flags['eravisit_' + map.era] = 1; ui.toast(map.era === 'past' ? '⏪ You travelled into the past!' : '⏩ You travelled into the future!', 3200); }
+    if (map.id === 'hometown' && !S().flags['seasontoast_' + season().key + new Date().getFullYear()] && S().flags.starter) { S().flags['seasontoast_' + season().key + new Date().getFullYear()] = 1; ui.toast(`${season().icon} ${season().name} has arrived! The Season Herald in Origin Town has a gift.`, 4200); }
     this.checkObjective(); autosave();
   },
   async roomLocked(p) {
@@ -65,9 +70,9 @@ export const events = {
     if (base !== G.lastObjective) { if (G.lastObjective !== undefined) ui.toast('★ ' + objective(), 3600); G.lastObjective = base; }
   },
   async wild(p) {
-    const m = G.world.map; const rt = m.encounter || Math.min(9, (+G.world.chapter() || 0) + 1); const [lo, hi] = W().routeLevels(rt); const li = R.pick(W().routeLines(rt)); const lvl = R.int(lo, hi);
+    const m = G.world.map; const rt = m.era ? Math.min(9, Math.max(5, (+G.world.chapter() || 0) + 1)) : m.encounter || Math.min(9, (+G.world.chapter() || 0) + 1); const [lo, hi] = W().routeLevels(rt); const li = R.pick(W().routeLines(rt)); const lvl = R.int(lo, hi);
     G.busy++; audio.sfx('encounter'); await sleep(350);
-    const r = await runBattle({ kind: 'wild', enemies: [{ sp: W().speciesFor(li, lvl), lvl }], qci: G.world.chapter(), biome: m.biome, music: 'battle', seed: W().id + m.id });
+    const r = await runBattle({ kind: 'wild', enemies: [{ sp: W().speciesFor(li, lvl), lvl, era: m.era }], qci: G.world.chapter(), biome: m.biome, music: 'battle', seed: W().id + m.id, qfn: m.era ? eraQFn(m.era) : undefined });
     G.world.noEnc = 4; G.busy--;
     await afterBattle(r);
   },
@@ -119,7 +124,7 @@ async function spotted(o, p, dist) {
 async function trainerBattle(o) {
   const title = `${o.cls} ${o.name}`;
   await say(R.pick(TRAINER_LINES), title);
-  const r = await runBattle({ kind: 'trainer', enemies: o.team, trainerTitle: title, trainerPal: personPalette(hash(G.world.map.id + o.i + (o.name || '')), o.pal || {}), money: o.money, qci: o.qci, biome: G.world.map.biome, music: 'battle', seed: o.key, after: R.pick(T_WIN) });
+  const r = await runBattle({ kind: 'trainer', enemies: o.team, trainerTitle: title, trainerPal: personPalette(hash(G.world.map.id + o.i + (o.name || '')), o.pal || {}), money: o.money, qci: o.qci, biome: G.world.map.biome, music: 'battle', seed: o.key, after: R.pick(T_WIN), qfn: o.era ? eraQFn(o.era, 0.7) : undefined });
   if (r === 'win') { S().trainers[o.key] = 1; if (o.tip) { await say([`Take this lesson with you:`, termLine(o.tip)], title); learn(o.tip); } }
   await afterBattle(r);
 }
@@ -165,6 +170,8 @@ export function objective() {
 }
 export function questList() {
   const s = S(), w = W(); const out = [{ title: 'Main Quest', desc: objective(), done: s.champion, main: true }];
+  if ((s.echoes || []).length) { const d = dueEchoes(s).length; out.push({ title: '🔁 Learning Echoes', desc: d ? `${d} echo${d > 1 ? 'es are' : ' is'} due — visit an Echo Rift or open ⏳ Chrono Log.` : `${s.echoes.length} echoes waiting to return. Check the ⏳ Chrono Log.`, done: false, ready: d > 0 }); }
+  if (badgeCount(s) >= 4) out.push({ title: '🌀 Chrono Gate', desc: 'Travel to the past and the future through the gate in Origin Town.', done: !!(s.flags.eravisit_past && s.flags.eravisit_future) });
   for (let i = 0; i < 8; i++) {
     if (!s.flags['visit' + i]) break; const c = w.cities[i];
     const notes = [0, 1, 2].filter((k) => s.taken[`r${i + 1}n${k}`]).length;
@@ -175,6 +182,7 @@ export function questList() {
   }
   return out;
 }
+Promise.resolve().then(() => Object.assign(handlers, timeHandlers));
 const researchLine = (i) => { const pool = W().routeLines(i + 1); return pool[hash(W().id + 'res' + i) % pool.length]; };
 const lineCaught = (li) => W().lines[li].ids.some((id) => S().caught[id]);
 
@@ -209,7 +217,7 @@ const handlers = {
     S().taken[o.key] = 1; audio.sfx('item'); learn(o.term);
     await say(['You found a lost note!', termLine(o.term)]); await offerMore(o.term);
     const r = G.world.map.noteRoute; const n = [0, 1, 2].filter((k) => S().taken[`r${r}n${k}`]).length;
-    if (n >= 3 && !S().flags['notes' + r]) { S().flags['notes' + r] = 1; S().bag.shard = (S().bag.shard || 0) + 1; S().money += 300; audio.sfx('badge'); await say(['All 3 lost notes on this route recovered!', 'Reward: *Insight Shard* and ¤300.']); }
+    if (n >= 3 && !S().flags['notes' + r]) { S().flags['notes' + r] = 1; S().bag.cube2 = (S().bag.cube2 || 0) + 2; S().money += 300; audio.sfx('badge'); await say(['All 3 lost notes on this route recovered!', 'Reward: 2 *Prime Cubes* and ¤300.']); }
     else await say(`(${n}/3 notes found on this route.)`);
   },
   async terminal() {
@@ -260,7 +268,7 @@ const handlers = {
   async researcher(o) {
     const i = o.ci, s = S(), w = W(); const li = researchLine(i); const ln = w.lines[li];
     if (s.flags['research' + i]) { await say(`Thanks again! ${ln.names[0]} embodies *${ln.concept}*. Fascinating stuff.`, o.name); return; }
-    if (lineCaught(li)) { s.flags['research' + i] = 1; s.bag.cube2 = (s.bag.cube2 || 0) + 3; s.bag.shard = (s.bag.shard || 0) + 1; audio.sfx('badge'); await say([`You caught a ${ln.names[0]}-line monster! Its concept is *${ln.concept}*.`, 'Here — 3 Prime Cubes and an Insight Shard for your help!'], o.name); return; }
+    if (lineCaught(li)) { s.flags['research' + i] = 1; s.bag.cube2 = (s.bag.cube2 || 0) + 3; s.bag.supertonic = (s.bag.supertonic || 0) + 2; audio.sfx('badge'); await say([`You caught a ${ln.names[0]}-line monster! Its concept is *${ln.concept}*.`, 'Here — 3 Prime Cubes and 2 Super Tonics for your help!'], o.name); return; }
     await say([`I'm studying ${ln.names[0]} — a ${TYPES[ln.type].name}-type that embodies *${ln.concept}*.`, `They live around Route ${ln.route || i + 1}. Could you capture one for me?`], o.name);
   },
   async labkeeper(o) {
@@ -281,8 +289,8 @@ const handlers = {
   async gifter(o) {
     const s = S(), c = W().cities[o.ci];
     if (s.flags[o.key]) { const t = c.terms[(hash(o.key) + (o.ti = (o.ti || 0) + 1)) % c.terms.length]; await say(['Here\'s another thought to chew on:', `*${t.term}* — ${t.def}`], o.name); learn(t.id); return; }
-    s.flags[o.key] = 1; s.bag.shard = (s.bag.shard || 0) + 2; audio.sfx('item');
-    await say([`You're taking on ${c.name}? Learning beats grinding, every time.`, 'Take these 2 *Insight Shards*. Each one raises a monster by a level.', 'Use them from your Bag.'], o.name);
+    s.flags[o.key] = 1; s.bag.supertonic = (s.bag.supertonic || 0) + 2; audio.sfx('item');
+    await say([`You're taking on ${c.name}? Learning beats grinding, every time.`, 'Take these 2 *Super Tonics* to keep your team going.', 'Insight Shards are rare now — Hall Leaders award one with each badge.'], o.name);
   },
   async guard(o) {
     if (o.gate === 'starter') { await say(S().flags.starter ? 'Stay on your toes out there!' : 'Get a partner monster from the Professor before you head out!', o.name); return; }
@@ -301,14 +309,14 @@ const handlers = {
     const team = w.leaderTeam(i).map((t) => rematch ? { ...t, lvl: t.lvl + 4 } : t);
     const r = await runBattle({ kind: 'leader', enemies: team, trainerTitle: title, trainerPal: personPalette(hash(G.world.map.id + o.i + o.name), { shirt: TYPES[c.type].color }), money: w.leaderLevel(i) * 60, qci: i, biome: G.world.map.biome, music: 'gym', seed: 'leader' + i, introMsg: `${title} wants to battle!` });
     if (r === 'win' && !rematch) {
-      s.badges[i] = true; audio.sfx('badge'); s.bag.shard = (s.bag.shard || 0) + 2;
+      s.badges[i] = true; audio.sfx('badge'); s.bag.shard = (s.bag.shard || 0) + 1;
       await say([`Incredible. You've mastered ${c.theme}.`, `Take the *${c.badge}* as proof!`], title);
       await menus.badgeCeremony(i);
       const sk = Object.entries(FIELD_SKILLS).find(([, v]) => v.badge === i);
       if (sk) { s.skills[sk[0]] = true; audio.sfx('item'); await say([`Take this too: the *${sk[1].disc}*!`, `Your monsters can now use *${sk[1].name}*. ${sk[1].desc}`, sk[0] === 'fly' ? 'Open the Region Map from your menu and choose a city to Soar there.' : 'Face the obstacle and press A to use it.'], title); }
       const tm = 'tm_' + c.type; if (ITEMS[tm]) { s.bag[tm] = (s.bag[tm] || 0) + 1; await say(`And a Technique Disc: *${ITEMS[tm].move}*! Teach it to a monster from your Bag — discs can be reused.`, title); }
       const key = c.terms.slice(0, 3).map((t) => `• ${t.term}`).join('\n');
-      await say([`Before you go, the core ideas of ${c.theme}:\n${key}`, `I'm also giving you 2 Insight Shards. ${w.cities[i + 1] ? `Next up: ${w.cities[i + 1].name}, where you'll study ${w.cities[i + 1].theme}.` : 'Only the Mastery Summit remains!'}`], title);
+      await say([`Before you go, the core ideas of ${c.theme}:\n${key}`, `I'm also giving you a rare *Insight Shard*. ${w.cities[i + 1] ? `Next up: ${w.cities[i + 1].name}, where you'll study ${w.cities[i + 1].theme}.` : 'Only the Mastery Summit remains!'}`], title);
     }
     await afterBattle(r);
   },
@@ -335,7 +343,7 @@ const handlers = {
 
 async function previewChoose(sp, text) {
   return new Promise((res) => {
-    ui.panel({ title: 'Partner Capsule', cls: 'preview', render: () => `<div class="pv"><img class="big" src="${G.mini(sp, 4)}"><div><h3>${esc(sp.name)}</h3><p><span class="type t-${sp.type}">${TYPES[sp.type].name}</span></p><p>Embodies: <b>${esc(sp.concept)}</b></p><p class="dim">Strong vs ${TYPES[beats(sp.type)].name} · Weak vs ${TYPES[weakTo(sp.type)].name}</p><p>${fmt(esc(text))}</p><div class="row"><button data-nav data-act="yes">Choose</button><button data-nav data-act="no">Not yet</button></div></div></div>`,
+    ui.panel({ title: 'Partner Capsule', cls: 'preview', render: () => `<div class="pv"><img class="big" src="${G.mini(sp)}"><div><h3>${esc(sp.name)}</h3><p><span class="type t-${sp.type}">${TYPES[sp.type].name}</span></p><p>Embodies: <b>${esc(sp.concept)}</b></p><p class="dim">Strong vs ${TYPES[beats(sp.type)].name} · Weak vs ${TYPES[weakTo(sp.type)].name}</p><p>${fmt(esc(text))}</p><div class="row"><button data-nav data-act="yes">Choose</button><button data-nav data-act="no">Not yet</button></div></div></div>`,
       actions: { yes: () => { res(true); return 'close'; }, no: () => { res(false); return 'close'; } } }).then(() => res(false));
   });
 }

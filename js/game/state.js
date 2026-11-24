@@ -19,7 +19,7 @@ export const ITEMS = {
   tm_data:      { name: 'Disc: Big Data Crash', price: 2500, desc: 'Technique Disc. Teaches Big Data Crash (Data, 85).', kind: 'tm', type: 'data', move: 'Big Data Crash', badge: 3 },
   tm_structure: { name: 'Disc: Foundation Quake', price: 2500, desc: 'Technique Disc. Teaches Foundation Quake (Structure, 85).', kind: 'tm', type: 'structure', move: 'Foundation Quake', badge: 3 },
   tm_flux:      { name: 'Disc: Refactor Blaze', price: 2500, desc: 'Technique Disc. Teaches Refactor Blaze (Flux, 85).', kind: 'tm', type: 'flux', move: 'Refactor Blaze', badge: 3 },
-  shard:      { name: 'Insight Shard', price: 0, desc: 'Earned by learning. Raises a monster by one level. Can\'t be used during battle.', kind: 'level' },
+  shard:      { name: 'Insight Shard', price: 0, desc: 'Very rare — one is awarded with each badge. Raises a monster by one level. Can\'t be used during battle.', kind: 'level' },
 };
 
 export function defaultSettings() { return { music: 0.55, sfx: 0.7, timer: false, timerV2: true, timerSec: 25, textSpeed: 2, every: true, showControls: true }; }
@@ -60,7 +60,8 @@ export const FIELD_SKILLS = {
 };
 export const tmMove = (id) => ({ name: ITEMS[id].move, power: 85, type: ITEMS[id].type, kind: 'hit', lvl: 1, tm: true });
 export const movesOf = (W, m) => W.species[m.sp].moves.filter((mv) => mv.lvl <= m.lvl).concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
-export const monName = (W, m) => m.nick || W.species[m.sp].name;
+export const ERA_PREFIX = { past: 'Ancient ', future: 'Neo-' };
+export const monName = (W, m) => m.nick || (ERA_PREFIX[m.era] || '') + W.species[m.sp].name;
 // Status conditions. Flux moves can burn, Cipher moves can poison, Data moves can make a monster sick.
 // They last until healed at a Mend Station / home, or with any healing item.
 export const STATUS = {
@@ -92,7 +93,24 @@ export function partyAlive(p) { return p.party.some((m) => m.hp > 0); }
 export function badgeCount(save) { return save.badges.filter(Boolean).length; }
 export function chapter(save) { return Math.min(badgeCount(save), 7); }
 export function addCodex(save, termId) { if (!save.codex[termId]) { save.codex[termId] = Date.now(); return true; } return false; }
+// ---- Learning Echoes: every miss returns on a spaced-repetition schedule (10 min, 1, 3, 7, 21 days)
+export const ECHO_INT = [10 * 60e3, 864e5, 3 * 864e5, 7 * 864e5, 21 * 864e5];
+export function echoUpdate(save, q, correct) {
+  if (!q || !q.q || !Array.isArray(q.opts)) return null;
+  const E = save.echoes || (save.echoes = []); const e = E.find((x) => x.k === q.q);
+  if (e) {
+    if (!correct) { e.st = 0; e.due = Date.now() + ECHO_INT[0]; return 'reset'; }
+    if (!q.echo) return null; // only echo battles advance the schedule
+    e.st++; if (e.st >= ECHO_INT.length) { E.splice(E.indexOf(e), 1); save.echoMastered = (save.echoMastered || 0) + 1; return 'mastered'; }
+    e.due = Date.now() + ECHO_INT[e.st]; return 'up';
+  }
+  if (correct) return null;
+  E.push({ k: q.q, q: { q: q.q, a: q.a ?? q.opts[q.answer], wrong: q.opts.filter((o, i) => i !== q.answer), expl: q.expl, ci: q.ci }, st: 0, due: Date.now() + ECHO_INT[0] });
+  if (E.length > 80) E.shift(); return 'new';
+}
+export const dueEchoes = (save, now = Date.now()) => (save.echoes || []).filter((e) => e.due <= now);
 export function recordAnswer(save, q, correct, quick) {
+  q.echoResult = echoUpdate(save, q, correct);
   const s = save.stats; s.answered++; if (correct) s.correct++; if (quick) s.quick++;
   const k = String(q.ci); const pc = s.perCity[k] || (s.perCity[k] = { a: 0, c: 0 }); pc.a++; if (correct) pc.c++;
   if (q.id && q.id !== 'gen') {

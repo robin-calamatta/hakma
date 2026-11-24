@@ -1,4 +1,6 @@
 // Start menu and all sub-screens.
+import { chronoLog, echoBattle, timeTick } from './time.js';
+import { dueEchoes } from './state.js';
 import { G, ITEMS, stats, maxHp, movesOf, monName, xpToNext, gainXp, healMon, newPlayer, makeMon, addMon, badgeCount, chapter, writeSlot, saveSettings, recordAnswer, addCodex } from './state.js';
 import { ui, fmt } from './ui.js';
 import { audio } from '../core/audio.js';
@@ -19,17 +21,18 @@ import { editControls } from '../core/touchlayout.js';
 const S = () => G.save, W = () => G.W;
 
 export async function mainMenu(pi = 0) {
-  G.busy++;
+  G.busy++; timeTick();
   for (;;) {
     const online = G.net?.online;
     let items = [
-      ['team', '◈ Team'], ['map', '🗺 Map'], ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['mastery', '▲ Mastery'],
+      ['team', '◈ Team'], ['map', '🗺 Map'], ['dex', '◉ Dex'], ['bag', '🎒 Bag'], ['codex', '📘 Codex & Drills'], ['quests', '★ Quests'], ['time', `⏳ Chrono Log${dueEchoes(S()).length ? ` <i class="badge">${dueEchoes(S()).length}</i>` : ''}`], ['mastery', '▲ Mastery'],
       ['friends', `👥 Friends & Co-op${online ? ' <i class="dot on"></i>' : ''}`], ['look', '👕 Wardrobe'], ['players', '🎮 Local Players'], ['save', '💾 Save'], ['settings', '⚙ Settings'], ['help', '? Help & Legal'], ['title', '⏏ Title Screen'],
     ];
     if (!CONFIG.ONLINE) items = CONFIG.CLOUD_SAVES ? items.map((it) => (it[0] === 'friends' ? ['friends', G.net?.authed ? '☁ Account & Cloud' : '☁ Log in / Cloud Save'] : it)) : items.filter(([k]) => k !== 'friends');
     const c = await ui.choose(`${S().players[pi]?.name || ''} · ¤${S().money} · Badges ${badgeCount(S())}/8 — ${objective()}`, items.map(([, h]) => ({ html: h })), { cls: 'mainmenu', start: G.menuIdx || 0, cols: 2 });
     if (c < 0) break; G.menuIdx = c; const k = items[c][0];
     if (k === 'map') { const dest = await regionMap(); if (dest) { ui.closeAll(); G.busy--; await G.events.fly(dest); return; } }
+    if (k === 'time') { const go = await chronoLog(); if (go === 'echo') { ui.closeAll(); G.busy--; await echoBattle(); return; } }
     if (k === 'team') await team(pi); if (k === 'dex') await dex(); if (k === 'bag') await bag(pi); if (k === 'codex') await codex(); if (k === 'quests') await quests(); if (k === 'mastery') await mastery();
     if (k === 'friends') await G.netui.friends(); if (k === 'look') { const pi = G.save.players.length > 1 ? await ui.choose('Whose look?', G.save.players.map((p, i) => `P${i + 1} ${esc(p.name)}`)) : 0; if (pi >= 0) await G.wardrobe(pi); } if (k === 'players') await players(); if (k === 'settings') await settings(); if (k === 'help') await help();
     if (k === 'save') { G.autosave(true); ui.toast('Game saved' + (CONFIG.ONLINE && G.net?.authed ? ' · synced to cloud' : '')); }
@@ -60,7 +63,7 @@ async function monMenu(p, k) {
 export async function summary(m, readonly) {
   const w = W(); const sp = w.species[m.sp]; const st = stats(w, m); const mv = movesOf(w, m); const all = sp.moves.concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
   const line = w.lines[sp.li]; const term = w.terms.find((t) => t.id === sp.termId) || w.terms.find((t) => t.term.toLowerCase() === sp.concept.toLowerCase());
-  await ui.panel({ title: esc(monName(w, m)), wide: true, cls: 'summary', render: () => `<div class="pv"><img class="big" src="${G.mini(sp)}"><div>
+  await ui.panel({ title: esc(monName(w, m)), wide: true, cls: 'summary', render: () => `<div class="pv"><img class="big" src="${G.mini(sp, m.era)}"><div>
     <h3>${esc(sp.name)} <span class="lv">Lv${m.lvl}</span></h3><p><span class="type t-${sp.type}">${TYPES[sp.type].name}</span> <span class="dim">Stage ${sp.stage + 1}/${sp.stages}${sp.evolveAt ? ` · evolves at Lv ${sp.evolveAt}` : ''}</span></p>
     <p>Embodies: <b>${esc(sp.concept)}</b>${term ? `<br><span class="dim">${esc(term.def)}</span>` : sp.dex ? `<br><span class="dim">${esc(sp.dex)}</span>` : ''}</p>${term ? `<p class="dim">Chapter ${term.ci + 1}: ${esc(w.cities[term.ci].theme)}</p>` : ''}
     <p class="dim">Strong vs ${TYPES[beats(sp.type)].name} · Weak vs ${TYPES[weakTo(sp.type)].name} · Line: ${line.names.map(esc).join(' → ')}</p>
@@ -210,7 +213,7 @@ export async function mastery() {
 export async function players() {
   await ui.panel({ title: 'Local Players (same screen)', wide: true, render: () => `<div class="plist">${S().players.map((p, k) => `<div class="prow"><span class="sw" style="background:${p.color}"></span><b>P${k + 1} ${esc(p.name)}</b><span class="dim">${p.party.length} in team · ${p.box.length} in box</span>${k > 0 ? `<button data-nav data-act="rm" data-arg="${k}">Remove</button>` : ''}</div>`).join('')}</div>
     ${S().players.length < 4 ? '<button data-nav data-act="add">+ Add a local player</button>' : ''}
-    <div class="ctrl"><h4>Controls</h4><p><b>1 player:</b> Arrows/WASD move · Z/Space/Enter = A · X/Esc = B · Shift/C = Run (double-tap to lock running on/off; on touch, double-tap RUN) · Tab/M = Menu</p><p><b>Field skills:</b> leaders teach <i>Slice</i> (cut thin trees), <i>Smash</i> (break cracked rocks) and <i>Soar</i> (fly from the 🗺 Map to towns you've visited). Face the obstacle and press A. Leaders also hand out reusable 💿 Technique Discs.</p><p><b>Conditions:</b> ${TYPES.flux.name} attacks can <i>burn</i> (weaker attacks + chip damage), ${TYPES.cipher.name} attacks can <i>poison</i>, and ${TYPES.data.name} attacks can make a monster <i>sick</i> (may skip turns). Any healing item or a Mend Station cures them. Insight Shards only work outside battle.</p><p><b>Partner:</b> your chosen monster walks behind you — talk to it for tips. Pick a partner in Team → 🐾 Walk with me.</p><p><b>Learn more:</b> after any question, or by tapping a Codex term, see extra examples, worked questions and (if enabled) outside resources.</p><p><b>2+ players:</b> P1 WASD + F (A) / G (B) / Tab (menu) · P2 Arrows + . (A) / , (B) / / (menu) · P3 &amp; P4 use gamepads (each new pad joins the next slot). Touch controls drive P1.</p><p>Everyone shares one screen and travels together. In battle, every player's lead monster fights side by side and each player answers their own questions.</p></div>`,
+    <div class="ctrl"><h4>Controls</h4><p><b>1 player:</b> Arrows/WASD move · Z/Space/Enter = A · X/Esc = B · Shift/C = Run (double-tap to lock running on/off; on touch, double-tap RUN) · Tab/M = Menu</p><p><b>Field skills:</b> leaders teach <i>Slice</i> (cut thin trees), <i>Smash</i> (break cracked rocks) and <i>Soar</i> (fly from the 🗺 Map to towns you've visited). Face the obstacle and press A. Leaders also hand out reusable 💿 Technique Discs.</p><p><b>Conditions:</b> ${TYPES.flux.name} attacks can <i>burn</i> (weaker attacks + chip damage), ${TYPES.cipher.name} attacks can <i>poison</i>, and ${TYPES.data.name} attacks can make a monster <i>sick</i> (may skip turns). Any healing item or a Mend Station cures them. Insight Shards are very rare (one per badge) and only work outside battle.</p><p><b>Partner:</b> your chosen monster walks behind you — talk to it for tips. Pick a partner in Team → 🐾 Walk with me.</p><p><b>Learn more:</b> after any question, or by tapping a Codex term, see extra examples, worked questions and (if enabled) outside resources.</p><p><b>2+ players:</b> P1 WASD + F (A) / G (B) / Tab (menu) · P2 Arrows + . (A) / , (B) / / (menu) · P3 &amp; P4 use gamepads (each new pad joins the next slot). Touch controls drive P1.</p><p>Everyone shares one screen and travels together. In battle, every player's lead monster fights side by side and each player answers their own questions.</p></div>`,
     actions: { add: async () => { await addLocal(); }, rm: async (k) => { if (await ui.confirm(`Remove P${+k + 1} ${S().players[+k].name}? Their monsters will be lost.`)) { S().players.splice(+k, 1); S().players.forEach((p, i) => { p.color = ['#e04848', '#3a7ae0', '#30b060', '#e0a020'][i]; }); input.setPlayers(S().players.length); G.world.load(S().map, S().pos); } } } });
 }
 async function addLocal() {
@@ -227,12 +230,12 @@ async function addLocal() {
 
 // ------------------------------------------------------------ settings & help
 export async function settings() {
-  const st = G.settings; const keys = ['music', 'sfx', 'timer', 'timerSec', 'textSpeed', 'daynight', 'full'];
-  const lbl = { music: 'Music volume', sfx: 'Sound volume', timer: 'Question timer', timerSec: 'Timer length', textSpeed: 'Text speed', daynight: 'Day / night cycle', full: 'Fullscreen' };
-  const val = (k) => k === 'music' || k === 'sfx' ? '▮'.repeat(Math.round(st[k] * 10)) + '▯'.repeat(10 - Math.round(st[k] * 10)) : k === 'timer' ? (st.timer ? 'On' : 'Off (relaxed)') : k === 'timerSec' ? st.timerSec + 's' : k === 'textSpeed' ? ['', 'Slow', 'Normal', 'Fast', 'Instant'][st.textSpeed] : k === 'daynight' ? (st.daynight === false ? 'Off (always day)' : 'On (real time)') : document.fullscreenElement ? 'On' : 'Off';
+  const st = G.settings; const keys = ['music', 'sfx', 'timer', 'timerSec', 'textSpeed', 'daynight', 'seasonFx', 'full'];
+  const lbl = { music: 'Music volume', sfx: 'Sound volume', timer: 'Question timer', timerSec: 'Timer length', textSpeed: 'Text speed', daynight: 'Day / night cycle', seasonFx: 'Seasonal effects', full: 'Fullscreen' };
+  const val = (k) => k === 'music' || k === 'sfx' ? '▮'.repeat(Math.round(st[k] * 10)) + '▯'.repeat(10 - Math.round(st[k] * 10)) : k === 'timer' ? (st.timer ? 'On' : 'Off (relaxed)') : k === 'timerSec' ? st.timerSec + 's' : k === 'textSpeed' ? ['', 'Slow', 'Normal', 'Fast', 'Instant'][st.textSpeed] : k === 'seasonFx' ? (st.seasonFx === false ? 'Off' : 'On') : k === 'daynight' ? (st.daynight === false ? 'Off (always day)' : 'On (real time)') : document.fullscreenElement ? 'On' : 'Off';
   const change = (k, d) => {
     if (k === 'music' || k === 'sfx') { st[k] = clamp(Math.round((st[k] + d * 0.1) * 10) / 10, 0, 1); audio.setVolume(k, st[k]); }
-    if (k === 'timer') st.timer = !st.timer; if (k === 'daynight') st.daynight = st.daynight === false; if (k === 'timerSec') st.timerSec = clamp(st.timerSec + d * 5, 10, 60); if (k === 'textSpeed') st.textSpeed = clamp(st.textSpeed + d, 1, 4);
+    if (k === 'timer') st.timer = !st.timer; if (k === 'daynight') st.daynight = st.daynight === false; if (k === 'seasonFx') st.seasonFx = st.seasonFx === false; if (k === 'timerSec') st.timerSec = clamp(st.timerSec + d * 5, 10, 60); if (k === 'textSpeed') st.textSpeed = clamp(st.textSpeed + d, 1, 4);
     if (k === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
     saveSettings(st); audio.sfx('blip');
   };
@@ -242,7 +245,7 @@ export async function settings() {
     actions: { t: (k) => change(k, 1), ctl: async () => { setTimeout(async () => { G.busy++; await editControls(); G.busy--; }, 50); return 'close'; } } });
 }
 export async function help() {
-  await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p>
+  await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p><h4>Time travel ⏳</h4><p><b>Learning Echoes:</b> every question you miss comes back as an echo after 10 minutes, then 1, 3, 7 and 21 days. Battle echoes at an Echo Rift or from the ⏳ Chrono Log — answer all five steps to master it for good.<br><b>Chrono Gate:</b> with 4 badges, the gate in Origin Town opens trips to the past and future of your subject, with history questions and Ancient / Neo- era forms of monsters.<br><b>Real time:</b> the Keeper of Time gives a daily egg (hatches in ~2 hours) and buries time capsules (open after 3 days). Play daily to build your streak, and the Season Herald brings gifts each real season.</p>
     <p>Each city teaches one chapter of your topic. Talk to everyone (tips go into your Codex), pass the Study Lab Trial, then beat the Mastery Hall Leader for a badge. Badges open the road north. Eight badges lead to the Mastery Summit.</p>
     <h4>Types</h4><p>${typeCycleText()}. Each type beats the next one. Super-effective hits do double damage.</p>
     <h4>Legal</h4><p>Hakma is an original work. All monsters, characters, music and art are generated by the game itself. Educational content is provided as-is for learning; always verify safety-critical information (e.g. electrical work) against official codes and licensed professionals.</p>

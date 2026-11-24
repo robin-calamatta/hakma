@@ -44,7 +44,7 @@ async function match(ci) {
       open.push(i); audio.sfx('blip'); rr();
       if (open.length === 2) {
         moves++; const [x, y] = open; lock = true;
-        if (cards[x].id === cards[y].id && cards[x].kind !== cards[y].kind) { matched.add(cards[x].id); addCodex(S(), cards[x].id); audio.sfx('correct'); open = []; lock = false; rr(); if (matched.size === terms.length) { await sleep(300); const msg = reward(`st_match${ci}`, (s) => { s.bag.shard = (s.bag.shard || 0) + 1; }, 'First clear reward: an *Insight Shard*!'); layer.close(); await ui.say([`All pairs matched in ${moves} moves!`, msg]); } }
+        if (cards[x].id === cards[y].id && cards[x].kind !== cards[y].kind) { matched.add(cards[x].id); addCodex(S(), cards[x].id); audio.sfx('correct'); open = []; lock = false; rr(); if (matched.size === terms.length) { await sleep(300); const msg = reward(`st_match${ci}`, (s) => { s.bag.cube2 = (s.bag.cube2 || 0) + 2; }, 'First clear reward: 2 *Prime Cubes*!'); layer.close(); await ui.say([`All pairs matched in ${moves} moves!`, msg]); } }
         else { audio.sfx('wrong'); await sleep(900); open = []; lock = false; rr(); }
       }
     } } });

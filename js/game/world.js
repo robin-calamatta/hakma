@@ -1,4 +1,5 @@
 // Overworld: tile movement for up to 4 local players, NPCs, warps, encounters, trainer sight, online peers.
+import { drawSeason, drawEraTint, season } from './time.js';
 import { G, PLAYER_COLORS } from './state.js';
 import { view } from '../core/view.js';
 import { getMap } from './maps.js';
@@ -13,7 +14,7 @@ import { ui } from './ui.js';
 
 const TS = 16;
 const DX = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-const PEOPLE = new Set(['npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
+const PEOPLE = new Set(['keeper', 'seasonal', 'npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
 
 // A player's look: their saved wardrobe choices (p.look), falling back to the original per-player defaults.
 export function playerPalette(p, i) {
@@ -210,6 +211,7 @@ export class World {
     ents.sort((a, b) => a.y - b.y).forEach((e) => e.draw());
     for (const f of this.fx) { g.globalAlpha = Math.min(1, f.life * 2); g.fillStyle = f.c; g.fillRect(Math.round(f.x - cx), Math.round(f.y - cy), 2, 2); } g.globalAlpha = 1;
     if (!inside && B === 'snow') { g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 40; i++) { const x = (i * 97 + this.t * 20 * (1 + (i % 3))) % view.w, y = (i * 53 + this.t * 30 * (1 + (i % 2))) % view.h; g.fillRect(x, y, 1, 1); } }
+    if (!inside) { if (m.era) drawEraTint(g, this.t, view, m.era); else if (G.settings?.seasonFx !== false) drawSeason(g, this.t, view, season().fx, B); }
     if (!inside && B === 'neon') { g.fillStyle = 'rgba(40,0,80,0.12)'; g.fillRect(0, 0, view.w, view.h); }
     if (!inside && B === 'volcano') { g.fillStyle = 'rgba(255,80,20,0.08)'; g.fillRect(0, 0, view.w, view.h); for (let i = 0; i < 18; i++) { const x = (i * 61 + this.t * 9) % view.w, y = view.h - ((i * 37 + this.t * 25 * (1 + (i % 3))) % view.h); g.fillStyle = i % 2 ? '#ffb040' : '#ff6a2a'; g.fillRect(x, y, 1, 1); } }
     // lighting: real-world time of day outdoors (Settings → Day / night cycle)
@@ -239,12 +241,12 @@ export class World {
       return;
     }
     if (o.hidden) { const ph = (this.t * 0.8 + (o.x * 7 + o.y * 13) % 10 / 10) % 2.6; if (ph < 0.5) { const a = Math.sin(ph / 0.5 * Math.PI); g.fillStyle = `rgba(255,255,230,${a})`; const cx2 = Math.round(x) + 8, cy2 = Math.round(y) + 9; g.fillRect(cx2 - 1, cy2 - 3, 2, 6); g.fillRect(cx2 - 3, cy2 - 1, 6, 2); } return; }
-    drawObject(g, o.kind, Math.round(x), Math.round(y), this.t);
+    drawObject(g, o.kind === 'rift' && (G.save.echoes || []).some((e) => e.due <= Date.now()) ? 'riftdue' : o.kind, Math.round(x), Math.round(y), this.t);
     if (o.kind === 'station') { g.fillStyle = '#ffd23f'; g.font = '8px "Press Start 2P"'; g.textAlign = 'center'; g.fillText({ match: '≡', sequence: '#', speed: '!' }[o.game], Math.round(x) + 8, Math.round(y) - 1 + Math.sin(this.t * 3) * 1.5); }
   }
   drawPartner(g, f, m, x, y) {
     const sp = G.W.species[m.sp]; if (!sp) return;
-    const img = monsterCanvas(sp, f.dir === 'up');
+    const img = monsterCanvas(sp, f.dir === 'up', m.era);
     const hop = f.moving ? -Math.abs(Math.sin(f.mt * Math.PI)) * 3 : Math.sin(this.t * 3) * 0.6;
     const S = 30;
     g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(x + 8, y + 13, 7, 2.5, 0, 0, 6.29); g.fill();

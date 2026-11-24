@@ -3,6 +3,7 @@ import { typeBeatsLines } from '../content/types.js';
 import { rng, hash } from '../core/rng.js';
 import { T } from '../core/sprites.js';
 import { BIOME_ORDER } from './content.js';
+import { eraSetFor } from '../content/eras.js';
 
 const CITY_MOOD = { meadow: 'town', coast: 'bright', forest: 'mystic', desert: 'bright', snow: 'calm', volcano: 'epic', crystal: 'cave', neon: 'neon' };
 const ROUTE_MOOD = { crystal: 'cave', neon: 'neon' };
@@ -58,6 +59,7 @@ function build(W, id) {
   if (id === 'hometown') return hometown(W);
   if (id === 'lab') return profLab(W);
   if (id === 'summit') return summit(W);
+  if (id === 'era_past' || id === 'era_future') return eraMap(W, id.slice(4));
   if ((mm = id.match(/^route(\d)$/))) return route(W, +mm[1]);
   if ((mm = id.match(/^grove(\d)$/))) return grove(W, +mm[1]);
   if ((mm = id.match(/^city(\d)$/))) return city(W, +mm[1]);
@@ -100,6 +102,12 @@ function hometown(W) {
   m.objs.push(npc(mx(10), 2, { kind: 'guard', name: 'Ranger', gate: 'starter', dir: 'down' }));
   const ry = routeEntryY(W, 1);
   m.warps.push({ x: 11, y: 0, to: 'route1', tx: 10, ty: ry, dir: 'up' }, { x: 12, y: 0, to: 'route1', tx: 11, ty: ry, dir: 'up' });
+  // Time Garden: Chrono Gate, Keeper of Time, seasonal visitor and the Echo Rift
+  m.rect(mx(2, 9), 11, 9, 6, T.GRASS); m.rect(mx(4), 11, 1, 3, T.PATH); m.set(mx(4), 14, T.PATH);
+  m.objs.push({ x: mx(4), y: 14, kind: 'chrono' });
+  m.objs.push(npc(mx(6), 14, { kind: 'keeper', name: 'Keeper of Time', pal: { coat: true, shirt: '#6a4ad0', hair: '#f0f0ff' } }));
+  m.objs.push(npc(mx(9), 15, { kind: 'seasonal', name: 'Season Herald', pal: { shirt: '#e07030', hair: '#5a3018', hat: '#c03030' } }));
+  m.objs.push({ x: mx(2), y: 13, kind: 'rift' });
   Object.assign(m, { name: HOMETOWN, kind: 'town', biome: SEED ? cityBiome(W, 0) : 'meadow', music: 'town', ci: 0, gateNorth: { y: 1, flag: 'starter' } });
   return m;
 }
@@ -166,7 +174,7 @@ function route(W, r) {
   // item caches + notes (placed beside the path so they are always reachable)
   const spots = []; for (let y = 4; y < h - 4; y += 3) { for (const x of [px[y] - 1, px[y] + 2]) if (x > 1 && x < w - 2 && !m.objs.some((o) => o.x === x && o.y === y)) spots.push([x, y]); }
   const sp = spots.sort(() => R() - 0.5);
-  const items = ['tonic', 'cube', r > 3 ? 'supertonic' : 'tonic', 'shard'];
+  const items = ['tonic', 'cube', r > 3 ? 'supertonic' : 'tonic', 'cube'];
   for (let k = 0; k < 4 && sp.length; k++) { const [x, y] = sp.pop(); m.set(x, y, T.GRASS); m.objs.push({ x, y, kind: 'item', item: R.pick(items), count: 1, key: `r${r}i${k}`, solidTile: false }); }
   const nc = toCity !== null ? toCity : 7; const terms = W.cities[nc].terms;
   for (let k = 0; k < 4 && sp.length && terms.length; k++) { const [x, y] = sp.pop(); m.set(x, y, T.GRASS); m.objs.push({ x, y, kind: 'note', term: terms[(k * 3 + 1) % terms.length].id, key: `r${r}n${k}` }); }
@@ -176,7 +184,7 @@ function route(W, r) {
     const gx = left ? 3 : w - 3 - gw, gy0 = gy - 2;
     m.rect(gx, gy0, gw, gh, T.GRASS); for (let y = gy0; y < gy0 + gh; y++) for (let x = gx; x < gx + gw; x++) if (R() < 0.25) m.set(x, y, T.FLOWER);
     for (let x = Math.min(gx + gw, px[gy]); x <= Math.max(gx - 1, px[gy] + 1); x++) m.set(x, gy, T.PATH);
-    m.set(gx + 3, gy0 + 1, T.GRASS); m.objs.push({ x: gx + 3, y: gy0 + 1, kind: 'item', item: R.pick(['shard', 'cube2', 'supertonic', 'shard']), count: 1, key: `r${r}gl` });
+    m.set(gx + 3, gy0 + 1, T.GRASS); m.objs.push({ x: gx + 3, y: gy0 + 1, kind: 'item', item: R.pick(['cube2', 'supertonic', 'maxtonic']), count: 1, key: `r${r}gl` });
     m.set(gx + 1, gy0 + 3, T.GRASS); m.objs.push(npc(gx + 1, gy0 + 3, { name: R.pick(['Wanderer', 'Hiker', 'Birdwatcher', 'Camper']), tips: tipLines(W, Math.min(r - 1, 7), 8, 2), dir: 'right', pal: { shirt: '#7a5a3a', hat: '#4a8a3a' } }));
     m.set(gx + gw - 2, gy0 + gh - 2, T.SIGN); m.objs.push({ x: gx + gw - 2, y: gy0 + gh - 2, kind: 'sign', text: ['A quiet glade. Explorers say every route hides a sparkle or two — look for glints in the grass!'] });
   }
@@ -184,7 +192,7 @@ function route(W, r) {
   for (let k = 0, tries = 0; k < 2 && tries < 80; tries++) {
     const x = R.int(3, w - 4), y = R.int(5, h - 6);
     if (m.get(x, y) !== T.GRASS && m.get(x, y) !== T.TALL) continue; if (m.objs.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 3)) continue;
-    m.objs.push({ x, y, kind: 'item', hidden: true, walkable: true, item: R.pick(['tonic', 'cube', 'shard', 'supertonic', 'cube2']), count: 1, key: `r${r}h${k}` }); k++;
+    m.objs.push({ x, y, kind: 'item', hidden: true, walkable: true, item: R.pick(['tonic', 'cube', 'supertonic', 'cube2']), count: 1, key: `r${r}h${k}` }); k++;
   }
   // signpost
   m.set(px[h - 4] - 1, h - 4, T.SIGN);
@@ -210,7 +218,7 @@ function route(W, r) {
       const tile = r >= 4 && R() < 0.5 ? T.CRACKROCK : T.CUTTREE;
       obst.push([x, y, tile, T.GRASS]); m.set(x, y, tile); m.set(ix, y, T.GRASS);
       for (const [ax, ay] of [[ix, y - 1], [ix, y + 1], [ix + dir, y]]) if (ax >= 1 && ax <= w - 2) m.set(ax, ay, T.TREE);
-      const prize = r >= 5 ? R.pick(['tm', 'shard', 'cube2', 'maxtonic']) : R.pick(['shard', 'cube2', 'supertonic']);
+      const prize = r >= 5 ? R.pick(['tm', 'revive', 'cube2', 'maxtonic']) : R.pick(['revive', 'cube2', 'supertonic']);
       m.objs.push({ x: ix, y, kind: 'item', item: prize === 'tm' ? 'tm_' + R.pick(['logic', 'cipher', 'spark', 'data', 'structure', 'flux']) : prize, count: 1, key: `r${r}p` });
       break;
     }
@@ -249,12 +257,36 @@ function grove(W, r) {
   m.rect(R.int(3, 6), R.int(3, 5), 3, 2, T.WATER); scatter(m, R, 18, [T.FLOWER, T.FLOWER, T.TREE, T.ROCK], (x, y) => y >= 9 && y <= 11);
   m.set(11, 7, T.SIGN); m.objs.push({ x: 11, y: 7, kind: 'sign', text: [`Hidden Grove`, 'Rarer, stronger monsters live in this deep grass. Few trainers ever find this place!'] });
   m.objs.push(npc(13, 8, { name: 'Grove Keeper', tips: tipLines(W, Math.min(r - 1, 7), 9, 3), pal: { coat: true, shirt: '#3a8a5a', hair: '#e0e0e0' } }));
-  const prizes = ['shard', 'shard', 'maxtonic', 'cube2', 'tm_' + R.pick(['logic', 'cipher', 'spark', 'data', 'structure', 'flux'])];
+  const prizes = ['supertonic', 'revive', 'maxtonic', 'cube2', 'tm_' + R.pick(['logic', 'cipher', 'spark', 'data', 'structure', 'flux'])];
   [[4, 15], [19, 4], [18, 15]].forEach(([x, y], k) => { m.set(x, y, T.GRASS); m.objs.push({ x, y, kind: 'item', item: k === 2 && r >= 4 ? prizes[4] : R.pick(prizes.slice(0, 4)), count: 1, key: `gv${r}i${k}` }); for (const [ax, ay] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) if (m.get(ax, ay) === T.TREE) m.set(ax, ay, T.TALL); });
   // connect the item pockets to open ground
   for (const [x, y] of [[4, 15], [19, 4], [18, 15]]) { let cx = x, cy = y; while (cx !== 12 || cy !== 10) { if (cx !== 12) cx += cx < 12 ? 1 : -1; else cy += cy < 10 ? 1 : -1; if (m.get(cx, cy) === T.TREE || m.get(cx, cy) === T.WATER || m.get(cx, cy) === T.ROCK) m.set(cx, cy, T.TALL); } }
   m.warps.push({ x: ex, y: 10, to: back, tx: back_w.x + (westEntry ? -1 : 1), ty: back_w.y, dir: westEntry ? 'left' : 'right' });
   Object.assign(m, { name: 'Hidden Grove', kind: 'route', biome, music: 'mystic', ci: Math.min(r - 1, 7), encounter: Math.min(r + 2, 9), encRate: 1.4 });
+  return m;
+}
+
+// ------------------------------------------------------------ Chrono Gate eras
+function eraMap(W, era) {
+  const w = 30, h = 36, m = grid(w, h, T.GRASS); const R = rng(hash(W.id + SEED + 'era' + era)); const past = era === 'past';
+  const set = eraSetFor(W.id)[era]; border(m, [], []);
+  m.rect(14, 2, 2, h - 4, T.PATH); m.rect(6, 3, 18, 7, T.PATH);
+  for (const x of [6, 23]) for (const y of [3, 9]) m.set(x, y, past ? T.ROCK : T.FENCE);
+  m.rect(3, 13, 9, 6, T.TALL); m.rect(18, 13, 9, 6, T.TALL); m.rect(3, 22, 9, 7, T.TALL); m.rect(18, 22, 9, 7, T.TALL);
+  scatter(m, R, 26, past ? [T.TREE, T.FLOWER, T.ROCK] : [T.FLOWER, T.FLOWER, T.FENCE], (x, y) => (x >= 12 && x <= 17) || y <= 11 || y >= h - 5 || (y >= 19 && y <= 21));
+  m.set(12, 10, T.SIGN); m.objs.push({ x: 12, y: 10, kind: 'sign', text: [`${set.name} — ${set.years}`, past ? 'The air smells of old paper and machine oil. Monsters here wear their *Ancient* forms.' : 'Neon light hums everywhere. Monsters here have evolved *Neo-* forms.', 'Step on the time portal at the south end to return to the present.'] });
+  m.objs.push(npc(10, 4, { kind: 'nurse', name: past ? 'Apothecary' : 'Med-Bot', dir: 'down', pal: { coat: true, shirt: past ? '#8a5a30' : '#30d0e0', hair: past ? '#504030' : '#c0f8ff' } }));
+  m.objs.push(npc(19, 4, { name: past ? 'Historian' : 'Futurist', lines: [...set.facts, 'Battle here and you\'ll be quizzed on this era too!'], pal: { coat: past, shirt: past ? '#704020' : '#4040ff', hair: past ? '#909090' : '#ff40d0' } }));
+  m.objs.push({ x: 17, y: 7, kind: 'rift' });
+  const lines = W.routeLines(5); const [, hi] = W.routeLevels(5);
+  [[12, 14, 'right'], [17, 20, 'left'], [12, 26, 'right'], [17, 30, 'left']].forEach(([x, y, dir], k) => {
+    m.set(x, y, T.GRASS); const nm = W.trainerName(hash(W.id + SEED + era + 't' + k)); const n = Math.min(2 + (k >> 1), 3);
+    const team = W.makeTeam(hash(W.id + SEED + era + 'team' + k), lines, n, hi + 1 - (n - 1)).map((e) => ({ ...e, era }));
+    m.objs.push({ x, y, kind: 'trainer', dir, sight: 4, key: `era_${era}_t${k}`, name: nm.name, cls: past ? 'Time Scholar' : 'Chrononaut', team, money: (hi + 4) * 26, qci: 4, era, pal: past ? { shirt: '#8a6a40', hat: '#5a4020' } : { shirt: '#20e0ff', hair: '#ff60e0' } });
+  });
+  [[4, 30], [25, 30], [4, 12], [25, 12]].forEach(([x, y], k) => { m.set(x, y, T.GRASS); m.objs.push({ x, y, kind: 'item', item: ['maxtonic', 'cube3', 'revive', 'tm_' + R.pick(['logic', 'cipher', 'spark', 'data', 'structure', 'flux'])][k], count: 1, key: `era_${era}_i${k}` }); });
+  m.objs.push({ x: 14, y: h - 3, kind: 'chrono', back: true });
+  Object.assign(m, { name: set.name, kind: 'route', biome: past ? 'desert' : 'neon', music: past ? 'mystic' : 'neon', ci: 4, encounter: 5, encRate: 1.1, era, entry: { x: 10, y: 6 } });
   return m;
 }
 
@@ -282,7 +314,7 @@ function city(W, i) {
   // east district: a park with a pond, benches of flowers, a hidden glint and a couple of locals
   m.rect(31, 13, 6, 4, T.GRASS); m.rect(32, 14, 3, 2, T.WATER); for (const [x, y] of [[31, 12], [36, 12], [31, 17], [36, 17], [30, 15], [37, 15]]) m.set(x, y, T.FLOWER);
   for (let k = 0; k < 2; k++) { const x = 30 + k * 6 + 1, y = 22; res(x, y); m.set(x, y, T.GRASS); m.objs.push(npc(x, y, { name: W.trainerName(hash(c.name + 'e' + k)).name, tips: tipLines(W, i, 10 + k), wander: true, pal: { shirt: ['#c06020', '#2080a0'][k] } })); }
-  res(35, 11); res(35, 18); res(36, 22); m.objs.push({ x: 36, y: 22, kind: 'item', hidden: true, walkable: true, item: 'shard', count: 1, key: `c${i}h` });
+  res(35, 11); res(35, 18); res(36, 22); m.objs.push({ x: 36, y: 22, kind: 'item', hidden: true, walkable: true, item: 'maxtonic', count: 1, key: `c${i}h` });
   for (let x = 30; x < 38; x++) res(x, 21); for (let x = 30; x < 38; x++) res(x, 8);
   scatter(m, r, 40, biome === 'neon' || biome === 'crystal' ? [T.TREE, T.FLOWER, T.ROCK] : [T.FLOWER, T.FLOWER, T.TREE, T.TREE, T.ROCK], (x, y) => reserved.has(x + ',' + y) || (x >= 13 && x <= 16) || y === 8 || y === 11 || y === 18 || y === 21 || y === 1 || y === h - 3 || x >= 28);
   const pals = ['#d04040', '#3070d0', '#30a050', '#8040c0', '#e0a020'];

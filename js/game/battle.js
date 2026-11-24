@@ -66,7 +66,7 @@ class BattleScene {
     g.drawImage(this.bg, 0, 0);
     const bob = (ph) => Math.round(Math.sin(this.t * 2.4 + ph) * 1.5);
     const drawMon = (sp, back, x, y, s, st, ph, mon, enemy) => {
-      let c = monsterCanvas(sp, back); const w = 56 * s * st.s; let h = 56 * s * st.s;
+      let c = monsterCanvas(sp, back, mon?.era); const w = 56 * s * st.s; let h = 56 * s * st.s;
       // ---- condition looks: injured (low HP), poisoned, burned, sick
       const hpPct = mon ? clamp(mon.hp / this.hpMax(mon, enemy), 0, 1) : 1; const status = mon && mon.hp > 0 ? mon.status : null;
       let dx = 0, dy = 0; let tint = null, ta = 0;
@@ -162,7 +162,7 @@ class BattleScene {
     // intro wipe
     audio.play('battle:' + (o.music || 'battle') + ':' + (o.seed || W.id), o.seed || W.id, o.music || 'battle');
     this.wipe = 1; await tween(380, (k) => { this.wipe = 1 - k; }); this.wipe = undefined;
-    const spawnEnemy = (k) => { const e = o.enemies[k]; const mon = makeMon(W, e.sp, e.lvl); mon.hp = this.hpMax(mon, true); this.enemy = { mon, boost: 0 }; G.save.seen[e.sp] = 1; };
+    const spawnEnemy = (k) => { const e = o.enemies[k]; const mon = makeMon(W, e.sp, e.lvl); if (e.era) mon.era = e.era; mon.hp = this.hpMax(mon, true); this.enemy = { mon, boost: 0 }; G.save.seen[e.sp] = 1; };
     spawnEnemy(0);
     if (o.kind === 'wild') { this.enemyVisible = true; this.spr('e').x = 160; this.hud(); await tween(400, (k) => { this.spr('e').x = 160 * (1 - ease(k)); }); await this.msg(`A wild ${W.species[this.enemy.mon.sp].name} appeared!`); }
     else {
@@ -207,7 +207,7 @@ class BattleScene {
     }
   }
   async ask(al, tag) {
-    const W = G.W; const q = W.pickQ(this.o.qci ?? G.world.chapter(), G.save, { review: this.o.kind === 'wild' ? 0.25 : 0.15 });
+    const W = G.W; const q = this.o.qfn?.() || W.pickQ(this.o.qci ?? G.world.chapter(), G.save, { review: this.o.kind === 'wild' ? 0.25 : 0.15 });
     const res = await ui.question(q, { tag, who: this.allies.length > 1 ? `P${al.pi + 1} ${G.save.players[al.pi].name}` : null });
     recordAnswer(G.save, q, res.correct, res.quick);
     if (res.correct) { const bonus = Math.round(4 + al.mon.lvl * 1.6 + (res.quick ? 4 : 0)); const ev = gainXp(W, al.mon, bonus); al.xpLog = (al.xpLog || 0) + bonus; await this.levelEvents(al.mon, ev); }
@@ -358,7 +358,7 @@ class BattleScene {
       audio.sfx('catch'); for (let i = 0; i < 3; i++) this.burst(this.cube.x, this.cube.y, '#ffd23f', 10, 60);
       await this.msg(`Gotcha! ${sp.name} was captured!`, 1500);
       const mon = e.mon; mon.hp = Math.min(maxHp(W, mon), Math.ceil(e.mon.hp / this.hpMul)); mon.hp = Math.max(1, mon.hp);
-      const fresh = !G.save.caught[mon.sp]; G.save.caught[mon.sp] = 1;
+      const fresh = !G.save.caught[mon.sp]; G.save.caught[mon.sp] = 1; if (mon.era) { G.save.eraDex = G.save.eraDex || {}; G.save.eraDex[mon.sp + ':' + mon.era] = 1; }
       if (fresh) await this.msg(`${sp.name}'s data was added to the Dex!`, 1100);
       if (sp.termId && !G.save.codex[sp.termId]) { G.save.codex[sp.termId] = Date.now(); const T = W.terms.find((x) => x.id === sp.termId); if (T) await this.msg(`📘 Codex: ${T.term} — ${T.def}`, 3200); }
       const where = addMon(G.save, al.pi, mon);
@@ -391,7 +391,7 @@ const effTag = (e) => (e > 1 ? '<span class="eff up">▲ Super</span>' : e < 1 ?
 function itemIconSafe(id) { try { return G.icons(id); } catch { return ''; } }
 export function monRow(W, m) {
   const sp = W.species[m.sp]; const mh = maxHp(W, m); const pct = clamp(m.hp / mh, 0, 1) * 100;
-  return `<img class="mini" src="${G.mini(sp)}"><span class="mrn">${esc(monName(W, m))}</span><span class="lv">Lv${m.lvl}</span><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}<span class="minihp"><i class="${pct > 50 ? 'g' : pct > 20 ? 'y' : 'r'}" style="width:${pct}%"></i></span><span class="hpn">${Math.ceil(m.hp)}/${mh}</span>`;
+  return `<img class="mini" src="${G.mini(sp, m.era)}"><span class="mrn">${esc(monName(W, m))}</span><span class="lv">Lv${m.lvl}</span><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}<span class="minihp"><i class="${pct > 50 ? 'g' : pct > 20 ? 'y' : 'r'}" style="width:${pct}%"></i></span><span class="hpn">${Math.ceil(m.hp)}/${mh}</span>`;
 }
 export async function evolveScene(scene, m, to) {
   const W = G.W; const from = W.species[m.sp], dest = W.species[to];
@@ -401,7 +401,7 @@ export async function evolveScene(scene, m, to) {
   G.scene = { update: (dt) => { cv.t += dt; }, render: (g) => {
     g.fillStyle = '#0d0820'; g.fillRect(0, 0, view.w, view.h);
     for (let i = 0; i < 40; i++) { const a = i * 0.7 + cv.t * 0.6, rr = 40 + (i * 13) % 120; g.fillStyle = i % 2 ? TYPES[dest.type].color : '#ffffff'; g.fillRect(view.w / 2 + Math.cos(a) * rr, view.h / 2 + Math.sin(a) * rr * 0.6, 2, 2); }
-    const sp = cv.form ? dest : from; const c = monsterCanvas(sp, false); const s = 2.2;
+    const sp = cv.form ? dest : from; const c = monsterCanvas(sp, false, m.era); const s = 2.2;
     g.drawImage(c, view.w / 2 - 28 * s, view.h / 2 + 50 - 56 * s, 56 * s, 56 * s);
     if (cv.white > 0) { g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(255,255,255,${cv.white})`; g.fillRect(0, 0, view.w, view.h); g.globalCompositeOperation = 'source-over'; }
   } };

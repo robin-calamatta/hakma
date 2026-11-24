@@ -1,3 +1,4 @@
+import { timeTick, dailyCheck } from './game/time.js';
 import { applyTypeTheme, genreDiscMove, TYPES } from './content/types.js';
 import { ITEMS } from './game/state.js';
 // Boot, title screen, game loop.
@@ -24,7 +25,7 @@ const cv = document.getElementById('screen'); const g = cv.getContext('2d'); g.i
 G.version = CONFIG.VERSION; G.settings = loadSettings(); G.topicsCount = topics().length;
 audio.setVolume('music', G.settings.music); audio.setVolume('sfx', G.settings.sfx);
 const miniCache = new Map();
-G.mini = (sp) => { const k = sp.uidKey; if (!miniCache.has(k)) miniCache.set(k, monsterCanvas(sp, false).toDataURL()); return miniCache.get(k); };
+G.mini = (sp, era = '') => { const k = sp.uidKey + (TYPES[sp.type]?.color || '') + era; if (!miniCache.has(k)) miniCache.set(k, monsterCanvas(sp, false, era).toDataURL()); return miniCache.get(k); };
 G.icons = itemIcon;
 // Saving plays a soft chime and flashes a 💾 badge (at most every few seconds, and never while the app is in the background).
 let lastSaveCue = 0;
@@ -185,6 +186,8 @@ function startGame(slot, save) {
   ui.closeAll(); G.scene = G.world; G.world.load(save.map, save.pos);
   G.lastObjective = undefined; G.events.checkObjective();
   ui.banner(G.world.map.name); writeSlot(slot, save);
+  setTimeout(() => { if (G.save === save) { timeTick(); dailyCheck(); } }, 1400);
+  clearInterval(G.timeIv); G.timeIv = setInterval(() => { if (G.save && !G.title && !G.battle) timeTick(); }, 60e3);
   if (!save.flags.topic) setTimeout(() => ui.toast('★ Walk to the desk (top of the room) and press A to choose your topic.', 5000), 600);
 }
 G.toTitle = () => { if (G.updateReady) { G.autosave?.(true); location.reload(); return; } G.title = true; G.save = null; G.scene = titleScene; document.getElementById('hud').innerHTML = ''; audio.play('title', 'hakma-title', 'title'); titleMenu(); };

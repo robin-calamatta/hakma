@@ -1,16 +1,21 @@
+import { TYPES } from '../content/types.js';
+function hexToHsl(hex) { const [r, g, b] = hexToRgb(hex).map((v) => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h = 0, sat = 0; const l = (mx + mn) / 2;
+  if (mx !== mn) { const d = mx - mn; sat = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; }
+  return [h, sat * 100, l * 100]; }
 // Procedural pixel art: monsters (with shading, outlines, type accessories), people, tiles, buildings, items.
 import { rng, hash, shade, mix, hsl, hexToRgb } from './rng.js';
-import { TYPES } from '../content/types.js';
 
 const cache = new Map();
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return [c, g]; };
 const OUT = '#14101c';
 
 // ---------------------------------------------------------------- MONSTERS
-const PLANS = ['biped', 'quad', 'blob', 'serpent', 'bird', 'floater', 'drake', 'quad', 'biped', 'drake'];
+const PLANS = ['biped', 'quad', 'blob', 'serpent', 'bird', 'floater', 'drake', 'insect', 'golem', 'fish', 'quad', 'biped'];
 const TYPE_HUE = { logic: 212, cipher: 275, spark: 48, data: 140, structure: 26, flux: 8, normal: 0 };
-export function monsterCanvas(sp, back = false) {
-  const key = 'm2' + sp.uidKey + (back ? 'b' : 'f');
+// era: undefined (present), 'past' (ancient form) or 'future' (future form)
+export function monsterCanvas(sp, back = false, era = '') {
+  const tcol = (TYPES[sp.type] || TYPES.logic).color;
+  const key = 'm3' + sp.uidKey + (back ? 'b' : 'f') + tcol + (era || '');
   if (cache.has(key)) return cache.get(key);
   const U = 1.5; // render at 1.5x the old resolution for finer detail (callers scale to their own size)
   const S = 84, M = new Uint8Array(S * S);
@@ -40,29 +45,38 @@ export function monsterCanvas(sp, back = false) {
   };
   const k = (v) => v * s * U;
   const ellA = (cx, cy, rx, ry, v, onlyEmpty = false) => { for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) { const nx = (x - cx) / rx, ny = (y - cy) / ry; if (nx * nx + ny * ny > 1) continue; if (onlyEmpty && get(x, y)) continue; set(x, y, v); } };
-  const fWings = plan === 'drake' || (plan !== 'bird' && lineR() < 0.22);
-  const fTail = plan !== 'serpent' && plan !== 'floater' && lineR() < 0.6;
+  const bw = 0.86 + lineR() * 0.34, bh = 0.88 + lineR() * 0.26; // per-family body proportions (chunky / slim / tall / squat)
+  const fWings = plan === 'drake' || (plan !== 'bird' && plan !== 'fish' && plan !== 'golem' && lineR() < 0.22);
+  const fTail = !['serpent', 'floater', 'fish', 'insect'].includes(plan) && lineR() < 0.62; const tailKind = Math.floor(lineR() * 5);
   const fSpikes = sp.type === 'structure' || lineR() < 0.25;
-  const eyeStyle = sp.type === 'cipher' && lineR() < 0.4 ? 3 : Math.floor(lineR() * 3);
-  const mouthStyle = Math.floor(lineR() * 3);
+  const eyeStyle = sp.type === 'cipher' && lineR() < 0.3 ? 3 : Math.floor(lineR() * 6); // 0 round 1 brows 2 slit 3 cyclops 4 sleepy 5 big-cute
+  const mouthStyle = Math.floor(lineR() * 5); // 0 smile 1 open 2 fangs 3 beak 4 whiskers
+  const extra = Math.floor(lineR() * 7); // 0 none 1 shell 2 mane 3 tusks 4 gem 5 back plates 6 cheek fluff
   // wings go behind everything
   if (fWings) { const wy = G - k(plan === 'quad' ? 16 : 22); tri(k(6), wy, k(22 + st * 2), wy - k(14 + st * 3), k(10), wy + k(8), 3); tri(k(14), wy - k(6), k(23 + st * 2), wy - k(12 + st * 3), k(20), wy + k(2), 7); }
   // tail (asymmetric, viewer's right)
-  if (fTail) { let tx = S / 2 + k(8), ty = G - k(6); for (let i = 0; i < 7; i++) { ellA(tx, ty, k(2.6 - i * 0.18), k(2.6 - i * 0.18), i > 4 ? 7 : 1); tx += k(2.2); ty -= k(1.6 + i * 0.5); } }
+  if (fTail) {
+    let tx = S / 2 + k(8), ty = G - k(6);
+    if (tailKind === 1) { ellA(tx + k(8), ty - k(10), k(6), k(8), 1); ellA(tx + k(9), ty - k(14), k(3.5), k(4), 2); } // big fluffy tail
+    else for (let i = 0; i < 7; i++) { ellA(tx, ty, k(2.6 - i * 0.18), k(2.6 - i * 0.18), i > 4 && tailKind === 0 ? 7 : 1); tx += k(2.2); ty -= k(1.6 + i * 0.5); }
+    if (tailKind === 2) { const sx = tx, sy = ty; for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) if (Math.abs(x) + Math.abs(y) <= k(4)) set(sx + x, sy + y, 3); } // spade tip
+    if (tailKind === 3) { for (let i = 0; i < 3; i++) ellA(tx + (i - 1) * k(1.5), ty - k(2 + i * 1.6), k(2.6 - i * 0.6), k(3 - i * 0.6), 7); } // flame tip
+    if (tailKind === 4) { ellA(tx, ty, k(3), k(3), 3); ellA(tx + k(2.5), ty + k(1), k(2), k(2), 3); } // club tail
+  }
   let head = { y: G - k(30), rx: k(9), ry: k(8) };
   const big = st === stages - 1 && stages > 1;
   switch (plan) {
     case 'drake': case 'biped':
-      ell(k(7), G - k(4), k(3.5), k(4.5), 3); ell(0, G - k(14), k(10.5), k(10), 1); ell(0, G - k(12), k(6), k(7), 2);
+      ell(k(7) * bw, G - k(4), k(3.5), k(4.5), 3); ell(0, G - k(14) * bh, k(10.5) * bw, k(10) * bh, 1); ell(0, G - k(12) * bh, k(6) * bw, k(7) * bh, 2);
       ell(k(11.5), G - k(16), k(3.2), k(5.5), 3); head = { y: G - k(29), rx: k(9.5), ry: k(8.5) }; ell(0, head.y, head.rx, head.ry, 1);
       if (lineR() < 0.6) { for (let i = 0; i < 6; i++) ell(k(3 + i * 1.6), G - k(6) - i * k(1.2), k(1.6), k(1.6), 3, true); }
       break;
     case 'quad':
-      ell(k(12), G - k(3.5), k(3), k(4), 3); ell(k(6), G - k(3), k(3), k(4), 3); ell(0, G - k(11), k(15), k(8), 1); ell(0, G - k(9), k(9), k(4.5), 2);
+      ell(k(12) * bw, G - k(3.5), k(3), k(4), 3); ell(k(6) * bw, G - k(3), k(3), k(4), 3); ell(0, G - k(11), k(15) * bw, k(8) * bh, 1); ell(0, G - k(9), k(9) * bw, k(4.5), 2);
       head = { y: G - k(21), rx: k(10), ry: k(8.5) }; ell(0, head.y, head.rx, head.ry, 1); ell(0, head.y + k(4), k(5), k(3.5), 2);
       break;
     case 'blob':
-      ell(0, G - k(13), k(15), k(13), 1); ell(0, G - k(8), k(10), k(7), 2); ell(k(9), G - k(2), k(4), k(2.5), 1); head = { y: G - k(17), rx: k(12), ry: k(9), inBody: true };
+      ell(0, G - k(13) * bh, k(15) * bw, k(13) * bh, 1); ell(0, G - k(8), k(10) * bw, k(7), 2); ell(k(9), G - k(2), k(4), k(2.5), 1); head = { y: G - k(17), rx: k(12), ry: k(9), inBody: true };
       break;
     case 'serpent':
       ell(0, G - k(5), k(16), k(5), 1); ell(0, G - k(4), k(10), k(2.5), 2); ell(0, G - k(13), k(11), k(5), 1); ell(0, G - k(20), k(6), k(5), 1);
@@ -74,17 +88,41 @@ export function monsterCanvas(sp, back = false) {
       ell(0, G - k(16), k(8.5), k(11), 1); ell(0, G - k(13), k(5), k(7.5), 2); ell(k(4), G - k(2), k(1.2), k(3), 4);
       head = { y: G - k(31), rx: k(8), ry: k(7) }; ell(0, head.y, head.rx, head.ry, 1); tri(0, head.y + k(1), k(2.5), head.y + k(2), 0, head.y + k(6), 4);
       break;
+    case 'insect': {
+      for (const [lx, ly] of [[6, 2], [10, 5], [13, 9]]) { tri(k(lx - 1), G - k(10), k(lx + 3), G - k(ly) , k(lx + 1), G - k(9), 3); ell(k(lx + 3), G - k(ly) + k(1), k(1), k(1.5), 3); }
+      ell(0, G - k(10), k(9) * bw, k(7) * bh, 1); ell(0, G - k(17), k(7) * bw, k(5), 8); ell(0, G - k(9), k(5), k(4), 2);
+      head = { y: G - k(25), rx: k(8.5), ry: k(7) }; ell(0, head.y, head.rx, head.ry, 1);
+      for (const d of [3, 6]) { const hy0 = head.y - head.ry; for (let i = 0; i < 7; i++) set(S / 2 + k(d) + i * 0.7, hy0 - i * 1.3, 4), set(S / 2 - 1 - k(d) - i * 0.7, hy0 - i * 1.3, 4); ell(k(d) + 5, hy0 - 9, k(1.4), k(1.4), 7); }
+      break; }
+    case 'golem': {
+      const rect = (dx, y0, w, h, v) => { for (let y = Math.round(y0); y < y0 + h; y++) for (let x = 0; x < w; x++) { set(S / 2 + dx + x, y, v); set(S / 2 - 1 - dx - x, y, v); } };
+      rect(k(4), G - k(7), k(5), k(7), 3); rect(0, G - k(22) * bh, k(12) * bw, k(16) * bh, 1); rect(0, G - k(18), k(6), k(9), 2);
+      rect(k(12) * bw, G - k(21) * bh, k(5), k(13), 3); head = { y: G - k(29) * bh, rx: k(8), ry: k(6.5) }; rect(0, head.y - head.ry, head.rx, head.ry * 2, 1);
+      for (let i = 0; i < 4; i++) set(S / 2 + k(3) + i * 3, G - k(15) - i * 2, 8);
+      break; }
+    case 'fish': {
+      ell(0, G - k(14), k(15) * bw, k(10) * bh, 1); ell(0, G - k(10), k(9) * bw, k(5), 2);
+      for (let i = 0; i <= k(11); i++) { const x = S / 2 + k(12) * bw + i, h = k(2) + i * 0.85; for (let y = -h; y <= h; y++) set(x, G - k(14) + y, 3); } // tail fin (one side)
+      ell(k(9) * bw, G - k(9), k(3), k(1.6), 3); // pectoral fins
+      tri(-k(3), G - k(23) * bh, k(2), G - k(32) * bh, k(6), G - k(22) * bh, 3); // dorsal fin
+      ell(k(8), G - k(2), k(2.5), k(2), 7); // little bubbles
+      head = { y: G - k(16), rx: k(10), ry: k(8), inBody: true };
+      break; }
     case 'floater':
       for (const dx of [k(3), k(8)]) for (let i = 0; i < 9; i++) ell(dx + Math.sin(i * 0.9) * k(1.5), G - k(6) - i * k(1.6), k(1.6), k(1.6), 3);
       ell(0, G - k(22), k(12.5), k(12), 1); ell(0, G - k(18), k(8), k(6), 2); head = { y: G - k(24), rx: k(11), ry: k(9), inBody: true };
       break;
   }
   // ears / horns by line
-  const earKind = Math.floor(lineR() * 4);
+  const earKind = Math.floor(lineR() * 8); // 0 pointy 1 round 2 small horns 3 none 4 bunny 5 curled horns 6 crest 7 side fins
   const hy = head.y - head.ry;
   if (earKind === 0) tri(k(3), hy + k(3), k(9), hy - k(7) - (big ? k(4) : 0), k(8), hy + k(4), 3);
   if (earKind === 1) ell(k(7), hy + k(1), k(3), k(4), 1);
   if (earKind === 2) { tri(k(2), hy + k(2), k(5), hy - k(6), k(6), hy + k(2), 3); }
+  if (earKind === 4) { ell(k(4.5), hy - k(6), k(2.2), k(8), 1); ell(k(4.5), hy - k(6), k(1), k(6), 11); }
+  if (earKind === 5) { for (let i = 0; i < 6; i++) ell(k(6 + i * 1.3), hy - k(i < 3 ? i * 2 : 6 - (i - 3) * 1.4), k(1.8 - i * 0.12), k(1.8 - i * 0.12), 12); }
+  if (earKind === 6) { for (let i = 0; i < 4; i++) tri(-k(1.2) + 0, hy + k(1) + i * k(2.5) - k(6), k(1.2), hy - k(5) + i * k(2.5) - k(6), k(2.5), hy + k(2) + i * k(2.5) - k(6), 3); }
+  if (earKind === 7) { tri(head.rx * 0.9, head.y - k(2), head.rx + k(7), head.y - k(7), head.rx + k(5), head.y + k(4), 3); }
   // type accessories (grow with stage)
   const n = st + 1 + (stages === 1 ? 1 : 0);
   switch (sp.type) {
@@ -96,37 +134,65 @@ export function monsterCanvas(sp, back = false) {
     case 'cipher': tri(k(5), hy + k(3), k(13), hy - k(8), k(10), hy + k(5), 3); if (n > 2) tri(k(10), hy + k(5), k(18), hy - k(2), k(12), hy + k(8), 3); break;
   }
   if (fSpikes) { const n2 = 2 + st; for (let i = 0; i < n2; i++) { const by = head.y - head.ry * 0.2 + i * k(5), bx = head.rx * 0.9 + i * k(1.5); tri(bx - k(1), by, bx + k(5), by - k(4), bx, by + k(3), 3); } }
+  // family extras
+  if (extra === 1 && !['fish', 'bird', 'floater'].includes(plan)) { ell(0, G - k(17) * bh, k(9) * bw, k(7), 3, false); for (let i = -1; i <= 1; i++) ell(i * k(4), G - k(18) * bh, k(1.5), k(1.5), 8); } // shell / armour plate
+  if (extra === 2) { for (let i = 0; i < 9; i++) { const a = -Math.PI / 2 + (i - 4) * 0.33; const rx = head.rx + k(2), ry = head.ry + k(2); tri(Math.cos(a) * rx * 0.6, head.y + Math.sin(a) * ry * 0.6, Math.cos(a) * (rx + k(4)), head.y + Math.sin(a) * (ry + k(4)), Math.cos(a + 0.2) * rx * 0.6, head.y + Math.sin(a + 0.2) * ry * 0.6, 3); } ell(0, head.y, head.rx, head.ry, 1); } // mane
+  if (extra === 3 && !head.inBody) { tri(k(2), head.y + head.ry * 0.5, k(3.5), head.y + head.ry + k(4), k(4.5), head.y + head.ry * 0.6, 12); } // tusks
+  if (extra === 4) { const gy = head.y - head.ry * 0.55; for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) if (Math.abs(x) + Math.abs(y) <= 3) set(S / 2 - 0.5 + x, gy + y, 7); } // forehead gem
+  if (extra === 5 && plan !== 'fish') { for (let i = 0; i < 4; i++) { const by = G - k(9 + i * 4.5) * bh; tri(-k(1.5), by, 0, by - k(5), k(1.5), by, 3); } } // back plates (centre ridge)
+  if (extra === 6 && !head.inBody) { ell(head.rx * 0.85, head.y + head.ry * 0.25, k(3), k(2.5), 2); } // cheek fluff
   // body pattern
-  const pat = Math.floor(lineR() * 4);
+  const pat = Math.floor(lineR() * 8); // 0 none 1 stripes 2 spots 3 plain 4 bands 5 mask 6 two-tone 7 rings
   if (pat === 1) for (let y = 0; y < S; y += 6) for (let x = 0; x < S; x++) if (get(x, y) === 1) set(x, y, 8);
   if (pat === 2) for (let i = 0; i < 26; i++) { const x = r.int(0, S - 1), y = r.int(0, S - 1); if (get(x, y) === 1) { set(x, y, 8); set(x + 1, y, 8); set(x, y + 1, 8); } }
+  if (pat === 4) for (let x = 0; x < S; x++) if (Math.floor((x - S / 2 + 200) / 5) % 2 === 0) for (let y = 0; y < S; y++) if (get(x, y) === 1 && y > head.y + head.ry) set(x, y, 8);
+  if (pat === 5 && !back) for (let y = Math.round(head.y - head.ry * 0.25); y < head.y + head.ry * 0.35; y++) for (let x = 0; x < S; x++) if (get(x, y) === 1) set(x, y, 8);
+  if (pat === 6) { const mid = head.y + head.ry + k(6); for (let y = 0; y < mid; y++) for (let x = 0; x < S; x++) if (get(x, y) === 1) set(x, y, 13); }
+  if (pat === 7) for (let i = 0; i < 6; i++) { const x = r.int(10, S - 10), y = r.int(20, S - 8); if (get(x, y) === 1) { for (let a = 0; a < 12; a++) { const px = x + Math.round(Math.cos(a / 2) * 2.4), py = y + Math.round(Math.sin(a / 2) * 2.4); if (get(px, py) === 1) set(px, py, 8); } } }
   if (sp.type === 'logic' && st > 0) for (let y = Math.floor(G - k(20)); y < G - k(6); y += 7) for (let x = 0; x < S; x++) if (get(x, y) === 1 && (x + y) % 7 < 4) set(x, y, 7);
   // face
   if (!back) {
     const ey = head.y + (head.inBody ? -k(1) : 0), ex = head.rx * 0.42, er = Math.max(1.6, k(2.6));
     if (eyeStyle === 3) { ell(0, ey, er * 1.6, er * 1.5, 5); ellA(S / 2 - 0.5, ey + er * 0.3, er * 0.7, er * 0.9, 6); set(S / 2 - er * 0.6, ey - er * 0.6, 9); }
     else {
-      ell(ex, ey, er, er * (eyeStyle === 2 ? 0.8 : 1.15), 5);
-      if (eyeStyle === 2) ell(ex, ey, er * 0.3, er * 0.8, 6); else { ell(ex - er * 0.12, ey + er * 0.3, er * 0.72, er * 0.88, 10); ell(ex - er * 0.15, ey + er * 0.4, er * 0.42, er * 0.58, 6); }
-      for (const sx of [S / 2 + ex - er * 0.45, S / 2 - 1 - ex - er * 0.45]) { set(sx, ey - er * 0.45, 9); set(sx + 1, ey - er * 0.45, 9); set(sx, ey - er * 0.45 + 1, 9); set(sx + er * 0.7, ey + er * 0.5, 9); }
+      if (eyeStyle === 4) { for (const sx of [S / 2 + ex, S / 2 - 1 - ex]) for (let x = -er; x <= er; x++) { set(sx + x, ey, 4); set(sx + x, ey + 1, 4); } }
+      if (eyeStyle !== 4) ell(ex, ey, er * (eyeStyle === 5 ? 1.35 : 1), er * (eyeStyle === 2 ? 0.8 : eyeStyle === 5 ? 1.5 : 1.15), 5);
+      if (eyeStyle === 4) { /* sleepy line eyes */ } else if (eyeStyle === 2) ell(ex, ey, er * 0.3, er * 0.8, 6); else { ell(ex - er * 0.12, ey + er * 0.3, er * 0.72, er * 0.88, 10); ell(ex - er * 0.15, ey + er * 0.4, er * 0.42, er * 0.58, 6); }
+      if (eyeStyle !== 4) for (const sx of [S / 2 + ex - er * 0.45, S / 2 - 1 - ex - er * 0.45]) { set(sx, ey - er * 0.45, 9); set(sx + 1, ey - er * 0.45, 9); set(sx, ey - er * 0.45 + 1, 9); set(sx + er * 0.7, ey + er * 0.5, 9); }
       if (lineR() < 0.55 && !head.inBody) ell(ex + er * 0.9, ey + er * 1.35, er * 0.7, er * 0.35, 11, false);
       if (eyeStyle === 1 || st >= 1) { for (let i = -1; i <= 1; i++) { set(S / 2 + ex + i, ey - er - 1 + i * 0.7, 4); set(S / 2 - 1 - ex - i, ey - er - 1 + i * 0.7, 4); } }
     }
     if (sp.type === 'cipher' && st >= 1 && eyeStyle !== 3) { ell(0, head.y - head.ry * 0.55, k(1.5), k(1.5), 7); }
     const my = ey + er + k(2.5);
-    if (mouthStyle === 1 && st >= 1) { ell(0, my + 1, k(2.6), k(1.6), 4); set(S / 2 + k(1.2), my, 5); set(S / 2 - 1 - k(1.2), my, 5); }
+    if (mouthStyle === 3 && !head.inBody) { tri(-k(2.2), my - k(1.5), 0, my + k(3.5), k(2.2), my - k(1.5), 12); } // beak
+    else if (mouthStyle === 4) { for (let x = -Math.round(k(1.5)); x <= Math.round(k(1.5)); x++) set(S / 2 + x, my, 4); for (let i = 0; i < 3; i++) { set(S / 2 + head.rx * 0.6 + i * 2, my - 2 + i, 4); set(S / 2 - 1 - head.rx * 0.6 - i * 2, my - 2 + i, 4); } } // whiskers
+    else if (mouthStyle === 1 && st >= 1) { ell(0, my + 1, k(2.6), k(1.6), 4); set(S / 2 + k(1.2), my, 5); set(S / 2 - 1 - k(1.2), my, 5); }
     else { for (let x = -Math.round(k(2.5)); x <= Math.round(k(2.5)); x++) set(S / 2 + x, my + (Math.abs(x) > k(1.5) ? -1 : 0), 4); if (st >= 1 || mouthStyle === 2) { set(S / 2 + k(1.5), my + 1, 5); set(S / 2 - 1 - k(1.5), my + 1, 5); } }
   }
   // palette
-  const hv = (TYPE_HUE[sp.type] + (hash(sp.lineSeed) % 70) - 35 + 360) % 360;
-  const base = hsl(hv, 58 + (hash(sp.lineSeed + 's') % 25), 50 + (hash(sp.lineSeed + 'l') % 12));
-  const accent = hsl((hv + [150, 180, 210, 40, -40][hash(sp.lineSeed + 'c') % 5] + 360) % 360, 65, 42);
-  const belly = shade(base, 0.55);
-  const glow = sp.type === 'flux' ? '#ffd23f' : sp.type === 'logic' ? '#9ff3ff' : sp.type === 'cipher' ? '#ff8bff' : sp.type === 'spark' ? '#fffbb0' : sp.type === 'data' ? '#c8ff9f' : '#ffe7b0';
+  // colours come from the TYPE colour of the current subject (so types are recognisable), varied per family
+  const [th, ts, tl] = hexToHsl(tcol); const grey = ts < 22;
+  const hv = (th + (hash(sp.lineSeed) % 36) - 18 + 360) % 360;
+  let base = grey ? hsl(hv, 8 + (hash(sp.lineSeed + 's') % 14), 46 + (hash(sp.lineSeed + 'l') % 18)) : hsl(hv, 55 + (hash(sp.lineSeed + 's') % 30), 44 + (hash(sp.lineSeed + 'l') % 16));
+  const scheme = hash(sp.lineSeed + 'c') % 6; // complementary, split, analogous, dark, light, metallic
+  const ah = grey ? (hash(sp.lineSeed + 'g') % 360) : (hv + [180, 150, 35, 0, -30, 0][scheme] + 360) % 360;
+  let accent = scheme === 3 ? shade(base, -0.45) : scheme === 4 ? hsl(ah, 40, 82) : scheme === 5 ? '#c8ccd8' : hsl(ah, 68, 44);
+  let belly = scheme === 4 ? shade(base, 0.35) : shade(base, 0.55);
+  let second = hsl((hv + 25) % 360, 50, 34); // two-tone pattern colour
+  if (era === 'past') { const sep = (h) => mix(mix(h, '#8a7a5a', 0.45), '#6a6a6a', 0.15); base = sep(base); accent = mix(accent, '#b08a3a', 0.6); belly = sep(belly); second = sep(second); }
+  if (era === 'future') { base = mix(mix(base, '#c8d4ee', 0.45), '#7a86a8', 0.15); accent = mix(accent, '#3ff6ff', 0.7); belly = mix(belly, '#ffffff', 0.5); second = mix(second, '#202840', 0.6); }
+  const glow = mix(tcol, '#ffffff', 0.55);
   const iris = hsl((hv + 180) % 360, 70, 45);
-  const col = { 1: base, 2: belly, 3: accent, 4: '#2a1f33', 5: '#ffffff', 6: '#1b1530', 7: glow, 8: shade(base, -0.25), 9: '#ffffff', 10: iris, 11: mix(base, '#ff6a8a', 0.55), 12: '#f4ecd8' };
+  const col = { 14: '#6aa040', 1: base, 2: belly, 3: accent, 4: '#2a1f33', 5: '#ffffff', 6: '#1b1530', 7: era === 'future' ? '#5ff8ff' : glow, 8: shade(base, -0.25), 9: '#ffffff', 10: iris, 11: mix(base, '#ff6a8a', 0.55), 12: era === 'past' ? '#d8c08a' : '#f4ecd8', 13: second };
   // claws: little pale tips where feet/legs touch the ground
   if (plan !== 'floater' && plan !== 'serpent') for (let x = 0; x < S; x++) for (const y of [G, G + 1]) if (get(x, y) === 3 && !get(x, y + 1) && x % 3 === 0) set(x, y, 12);
+  if (era === 'past') { for (let i = 0; i < 40; i++) { const x = r.int(0, S - 1), y = r.int(0, S - 1); if (get(x, y) === 1 && !get(x, y - 2)) set(x, y, 14); } // moss on top edges
+    for (let c2 = 0; c2 < 3; c2++) { let x = r.int(20, S - 20), y = r.int(30, S - 12); for (let i = 0; i < 8; i++) { if (get(x, y) === 1) set(x, y, 8); x += r.int(-1, 1); y += 1; } } } // cracks
+  if (era === 'future') { // glowing circuit traces + a visor band across the eyes
+    for (let y = 0; y < S; y += 4) for (let x = 0; x < S; x++) if (get(x, y) === 1 && (x * 7 + y) % 9 < 3) set(x, y, 7);
+    for (let x = 0; x < S; x += 4) for (let y = 0; y < S; y++) if (get(x, y) === 1 && (y * 5 + x) % 13 < 2) set(x, y, 7);
+    if (!back && !head.inBody) { const vy = Math.round(head.y - k(1)); for (let y = vy - 1; y <= vy + 1; y++) for (let x = Math.round(S / 2 - head.rx * 0.85); x < S / 2 + head.rx * 0.85; x++) if (get(x, y)) set(x, y, 7); }
+  }
   // find each part's vertical extent for soft top-light gradient
   let top = S, bot = 0; for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (get(x, y)) { if (y < top) top = y; if (y > bot) bot = y; }
   const BAYER = [[0, 2], [3, 1]];
@@ -138,7 +204,7 @@ export function monsterCanvas(sp, back = false) {
     if (!v) { const n = get(x + 1, y) || get(x - 1, y) || get(x, y + 1) || get(x, y - 1); if (n) put(x, y, n <= 3 || n === 8 ? mix(OUT, col[n], 0.18) : OUT); continue; }
     let hex = col[v];
     if (back && (v === 1 || v === 3 || v === 8)) hex = shade(hex, -0.08);
-    if (v <= 3 || v === 8) {
+    if (v <= 3 || v === 8 || v === 13) {
       // soft gradient (lighter on top), dithered so it reads as pixel art
       const gy = (y - top) / Math.max(1, bot - top); const d = (BAYER[y & 1][x & 1] / 4 - 0.375) * 0.08; hex = shade(hex, 0.1 - gy * 0.2 + d);
       if (!get(x, y - 1) || !get(x - 1, y - 1)) hex = shade(hex, 0.3);
@@ -389,6 +455,12 @@ export function drawObject(g, kind, x, y, t) {
   const px = (a, b, col, w = 1, h = 1) => { g.fillStyle = col; g.fillRect(x + a, y + b, w, h); };
   if (kind === 'item' || kind === 'cache') { const bob = Math.round(Math.sin(t * 4) * 1); px(4, 4 + bob, OUT, 8, 9); px(5, 3 + bob, OUT, 6, 11); px(5, 4 + bob, '#ffd23f', 6, 9); px(6, 5 + bob, '#fff6b0', 2, 3); px(5, 9 + bob, '#e09020', 6, 3); px(4, 14, '#00000033', 8, 2); }
   if (kind === 'note') { px(3, 4, OUT, 10, 10); px(4, 5, '#fff8e8', 8, 8); for (let i = 0; i < 3; i++) px(5, 7 + i * 2, '#a08060', 6, 1); px(10, 4, '#d04040', 2, 4); }
+  if (kind === 'chrono') { const c = `hsl(${(t * 80) % 360},90%,65%)`; px(1, -6, OUT, 14, 21); px(2, -5, '#8a8478', 12, 20); px(4, -3, OUT, 8, 16); px(5, -2, '#120a28', 6, 14); for (let i = 0; i < 5; i++) { const a = t * 3 + i * 1.26; px(7 + Math.round(Math.cos(a) * 2), 5 + Math.round(Math.sin(a) * 5), i % 2 ? c : '#ffffff', 1, 1); } px(2, -5, '#b0a898', 12, 1); px(6, -5, c, 4, 1); px(2, 14, '#5a5448', 12, 1); }
+  if (kind === 'rift' || kind === 'riftdue') { const due = kind === 'riftdue'; const sp = due ? 4 : 1.5; const c1 = due ? '#b37bff' : '#7a6aa0', c2 = due ? '#ffffff' : '#c8c0e0';
+    g.globalAlpha = due ? 0.35 + Math.sin(t * 4) * 0.15 : 0.18; px(2, -4, c1, 12, 20); px(0, 0, c1, 16, 12); g.globalAlpha = 1;
+    for (let yy = -3; yy < 16; yy++) { const w2 = Math.max(1, Math.round((1 - Math.abs(yy - 6) / 10) * 4 + Math.sin(t * sp + yy * 0.7) * 1.2)); px(8 - w2, yy, OUT, w2 * 2, 1); px(8 - w2 + 1, yy, c1, Math.max(1, w2 * 2 - 2), 1); }
+    px(7, 0 + Math.round(Math.sin(t * sp) * 3) + 3, c2, 2, 3);
+    for (let i = 0; i < (due ? 6 : 2); i++) { const a = t * sp * 0.6 + i * 1.05; px(8 + Math.round(Math.cos(a) * 7), 6 + Math.round(Math.sin(a) * 9), c2, 1, 1); } }
   if (kind === 'starter') { px(3, 5, OUT, 10, 9); px(4, 6, '#f0f0f8', 8, 7); px(4, 6, '#4cf0ff', 8, 3); px(7, 8, OUT, 2, 2); }
 }
 const iconCache = {};
