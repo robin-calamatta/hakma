@@ -276,3 +276,7 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 .lessonlist { min-width: 46%; } .lessonlist button { display: block; text-align: left; width: 100%; }
 .arcade .kb { display: flex; flex-direction: column; align-items: center; gap: 6px; } .arcade .kbrow { display: flex; gap: 5px; justify-content: center; width: 100%; max-width: 480px; } .arcade .kbrow button { flex: 1 1 0; min-width: 0; max-width: 44px; min-height: 40px; padding: 0; font-size: 15px; } .arcade .kbrow button.used { opacity: .3; }
 .arcade .kbrow button { text-align: center; justify-content: center; } .arcade .kbrow button.sel::before { content: none; }
+#hud.battle .enemyhuds { position: absolute; left: 3%; top: 3%; width: 40%; display: flex; flex-direction: column; gap: 0.2em; }
+#hud.battle .enemyhuds .bhud { position: static; width: 100%; padding: 0.15em 0.45em; font-size: 0.82em; }
+#hud.battle .enemyhuds .tt { display: none; }
+.bhud .fdots { display: inline-flex; gap: 0.2em; margin-left: 0.4em; vertical-align: middle; } .bhud .fdots i { width: 0.55em; height: 0.55em; border-radius: 50%; background: var(--sel); border: 1px solid #000; } .bhud .fdots i.out { background: #555; }

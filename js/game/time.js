@@ -46,11 +46,23 @@ export function drawEraTint(g, t, view, era) {
 }
 
 // ------------------------------------------------------------ era questions
+// Shuffle-bag: every era question is asked once before any repeats, and the
+// last few asked are pushed to the back of the next bag so they never come back-to-back.
+const ERA_DECKS = {};
+function drawEra(key, qs) {
+  let d = ERA_DECKS[key];
+  if (!d || !d.bag.length || d.n !== qs.length) {
+    const last = d?.last || []; const order = shuffle(qs.map((_, i) => i));
+    d = ERA_DECKS[key] = { n: qs.length, last, bag: order.filter((i) => !last.includes(i)).concat(order.filter((i) => last.includes(i))) };
+  }
+  const i = d.bag.shift(); d.last = [...d.last, i].slice(-Math.max(1, Math.floor(qs.length / 2)));
+  return qs[i];
+}
 export function eraQFn(era, share = 0.6) {
   const set = eraSetFor(W().id)[era]; if (!set) return undefined;
   return () => {
     if (R() > share) return null;
-    const [q, a, w1, w2, w3, expl] = R.pick(set.qs); const opts = shuffle([a, w1, w2, w3]);
+    const [q, a, w1, w2, w3, expl] = drawEra(W().id + ':' + era, set.qs); const opts = shuffle([a, w1, w2, w3]);
     return { id: 'era', q: `⏳ ${q}`, opts, answer: opts.indexOf(a), expl, ci: chapterNow(), a };
   };
 }

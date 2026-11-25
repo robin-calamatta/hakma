@@ -3,6 +3,7 @@ import { typeBeatsLines } from '../content/types.js';
 import { rng, hash } from '../core/rng.js';
 import { T, SOLID } from '../core/sprites.js';
 import { BIOME_ORDER, setContentSeed } from './content.js';
+import { archOf, scenOf, cityExtras, decorateCity, populateCity, placeInterior, routePairs } from './places.js';
 import { eraSetFor } from '../content/eras.js';
 
 const CITY_MOOD = { meadow: 'town', coast: 'bright', forest: 'mystic', desert: 'bright', snow: 'calm', volcano: 'epic', crystal: 'cave', neon: 'neon' };
@@ -39,6 +40,7 @@ function interior(w, h, exitTo, ex, ey) {
   return m;
 }
 const npc = (x, y, o) => ({ x, y, kind: 'npc', dir: 'down', ...o });
+export { grid, interior, npc, tipLines, building };
 
 // ---- per-save world seed: every new game gets a different region layout. 'legacy' keeps pre-seed saves identical.
 let SEED = '';
@@ -264,6 +266,7 @@ function route(W, r) {
   const southTo = fromCity === null ? ['hometown', 11, 2] : [`city${fromCity}`, 14, 2];
   const northTo = [`zone${r}`, 14, zoneH(r) - 2];
   for (const x of [10, 11]) { m.warps.push({ x, y: h - 1, to: southTo[0], tx: southTo[1] + (x - 10), ty: southTo[2], dir: 'down' }); m.warps.push({ x, y: 0, to: northTo[0], tx: northTo[1] + (x - 10), ty: northTo[2], dir: 'up' }); }
+  routePairs(W, r, m, R, onPath);
   Object.assign(m, { name: `Route ${r}`, kind: 'route', biome, music: ROUTE_MOOD[biome] || 'route', ci: Math.min(r - 1, 7), encounter: r, noteRoute: r });
   return m;
 }
@@ -600,55 +603,61 @@ function city(W, i) {
 // Seeded worlds get a freshly arranged city: every building lands in a different lot, with its own offset,
 // and the townsfolk, ponds, signs and the hidden garden door move around too.
 function cityRandom(W, i) {
-  const c = W.cities[i]; const w = 48, h = 26, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'cityR' + i)); const biome = cityBiome(W, i);
+  const c = W.cities[i]; const w = 48, h = 34, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'cityR' + i)); const arch = archOf(W, i); const biome = arch ? arch.biome : cityBiome(W, i);
   border(m, [14, 15], [14, 15]);
-  m.rect(14, 0, 2, h, T.PATH); m.rect(2, 9, w - 4, 2, T.PATH); m.rect(2, 19, w - 4, 2, T.PATH);
-  const hedgeXs = [29, 38]; for (const hx of hedgeXs) for (let y = 2; y < h - 2; y++) m.set(hx, y, y === 9 || y === 10 || y === 19 || y === 20 ? T.PATH : T.TREE);
-  const lots = [[2, 2, 11, 6], [17, 2, 11, 6], [30, 2, 8, 6], [39, 2, 7, 6], [2, 12, 11, 6], [17, 12, 11, 6], [30, 12, 8, 6], [39, 12, 7, 6]];
+  m.rect(14, 0, 2, h, T.PATH); m.rect(2, 9, w - 4, 2, T.PATH); m.rect(2, 19, w - 4, 2, T.PATH); m.rect(2, 29, w - 4, 2, T.PATH);
+  const STREETS = [9, 10, 19, 20, 29, 30]; const hedgeXs = [29, 38]; for (const hx of hedgeXs) for (let y = 2; y < h - 2; y++) m.set(hx, y, STREETS.includes(y) ? T.PATH : T.TREE);
+  const lots = [[2, 2, 11, 6], [17, 2, 11, 6], [30, 2, 8, 6], [39, 2, 7, 6], [2, 12, 11, 6], [17, 12, 11, 6], [30, 12, 8, 6], [39, 12, 7, 6], [2, 22, 11, 6], [17, 22, 11, 6], [30, 22, 8, 6], [39, 22, 7, 6]];
   const defs = [['gym', 8, 6, `city${i}_gym`, c.name + ' Mastery Hall'], ['archive', 7, 6, `city${i}_archive`, 'Archive'], ['academy', 7, 6, `city${i}_academy`, 'Academy'], ['arcade', 7, 5, `city${i}_arcade`, 'Arcade'], ['mend', 6, 5, `city${i}_mend`, 'Mend Station'], ['lab', 6, 5, `city${i}_lab`, 'Study Lab'], ['depot', 6, 5, `city${i}_depot`, 'Supply Depot'], ['house', 3 + r.int(0, 1), 4, `city${i}_house`, 'House']];
+  defs.push(...cityExtras(W, i));
   let order; for (let t = 0; t < 50; t++) { order = lots.map((_, k) => k).sort(() => r() - 0.5); if (defs.every((d, k) => lots[order[k]][2] >= d[1])) break; }
-  const reserved = new Set(); const res = (x, y) => reserved.add(x + ',' + y); const doors = {};
+  if (!defs.every((d, k) => lots[order[k]][2] >= d[1])) { const wide = lots.map((l, k) => k).filter((k) => lots[k][2] >= 10), rest = lots.map((l, k) => k).filter((k) => lots[k][2] < 10); const need = defs.map((d, k) => k).sort((a, b) => defs[b][1] - defs[a][1]); order = []; const pool = [...wide.sort(() => r() - 0.5), ...rest.sort(() => r() - 0.5)]; need.forEach((k) => { const j = pool.findIndex((l) => lots[l][2] >= defs[k][1]); order[k] = pool.splice(j, 1)[0]; }); }
+  const reserved = new Set(); const hard = new Set(); const res = (x, y) => reserved.add(x + ',' + y); const resH = (x, y) => { reserved.add(x + ',' + y); hard.add(x + ',' + y); }; const doors = {};
   defs.forEach(([kind, bw, bh, to, label], k) => { const [lx, ly, lw, lh] = lots[order[k]]; const bx = lx + r.int(0, lw - bw), by = ly + r.int(0, lh - bh);
-    const d = building(m, bx, by, bw, bh, kind, to, label); doors[kind] = d; const street = ly === 2 ? 9 : 19;
-    for (let y = d.dy + 1; y < street; y++) { m.set(d.dx, y, T.PATH); res(d.dx, y); res(d.dx - 1, y); res(d.dx + 1, y); } });
+    const d = building(m, bx, by, bw, bh, kind, to, label); doors[kind] = d; const street = ly === 2 ? 9 : ly === 12 ? 19 : 29;
+    for (let y = d.dy + 1; y < street; y++) { m.set(d.dx, y, T.PATH); resH(d.dx, y); res(d.dx - 1, y); res(d.dx + 1, y); } resH(d.dx, street - 1); });
   const ent = { gym: [7, 18], mend: [5, 7], lab: [6, 8], house: [4, 6], depot: [5, 7], archive: [6, 8], academy: [6, 8], arcade: [6, 8] };
-  for (const wp of m.warps) if (wp.door) { const e = ent[wp.kind]; wp.tx = e[0]; wp.ty = e[1]; }
-  for (let x = 0; x < w; x++) { res(x, 8); res(x, 11); res(x, 18); res(x, 21); } for (let y = 0; y < h; y++) { res(13, y); res(16, y); } res(13, 2);
+  for (const wp of m.warps) if (wp.door) { const e = ent[wp.kind]; if (e) { wp.tx = e[0]; wp.ty = e[1]; } else { wp.lazy = true; delete wp.tx; delete wp.ty; } }
+  for (let x = 0; x < w; x++) for (const y of [8, 11, 18, 21, 28, 31]) res(x, y); for (let y = 0; y < h; y++) { res(13, y); res(16, y); } res(13, 2);
   const free = (x, y) => m.get(x, y) === T.GRASS && !reserved.has(x + ',' + y) && !m.objs.some((o) => o.x === x && o.y === y);
-  const reachFrom = () => { const seen = new Set(['14,9']); const q = [[14, 9]]; while (q.length) { const [x, y] = q.pop(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = nx + ',' + ny; if (seen.has(k) || nx < 1 || ny < 1 || nx > 46 || ny > 24 || SOLID.has(m.get(nx, ny)) || m.objs.some((o) => o.x === nx && o.y === ny && !o.walkable)) continue; seen.add(k); q.push([nx, ny]); } } return seen; };
+  const reachFrom = () => { const seen = new Set(['14,9']); const q = [[14, 9]]; while (q.length) { const [x, y] = q.pop(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = nx + ',' + ny; if (seen.has(k) || nx < 1 || ny < 1 || nx > w - 2 || ny > h - 2 || SOLID.has(m.get(nx, ny)) || m.objs.some((o) => o.x === nx && o.y === ny && !o.walkable)) continue; seen.add(k); q.push([nx, ny]); } } return seen; };
   let reach = reachFrom();
   // the hidden garden door sits somewhere in a hedge, reached from a grassy spot beside it
-  { const cand = []; for (const hx of hedgeXs) for (let y = 3; y < 23; y++) { if (m.get(hx, y) !== T.TREE || [8, 9, 10, 11, 18, 19, 20, 21].includes(y)) continue; for (const ax of [hx - 1, hx + 1]) if (m.get(ax, y) === T.GRASS && reach.has(ax + ',' + y) && !reserved.has(ax + ',' + y)) cand.push([hx, y, ax]); }
+  { const cand = []; for (const hx of hedgeXs) for (let y = 3; y < h - 3; y++) { if (m.get(hx, y) !== T.TREE || [8, 9, 10, 11, 18, 19, 20, 21, 28, 29, 30, 31].includes(y)) continue; for (const ax of [hx - 1, hx + 1]) if (m.get(ax, y) === T.GRASS && reach.has(ax + ',' + y) && !reserved.has(ax + ',' + y)) cand.push([hx, y, ax]); }
     const [sx, sy, ax] = cand.length ? cand[r.int(0, cand.length - 1)] : [38, 22, 37]; m.set(sx, sy, T.TREE); m.set(ax, sy, T.GRASS); m.gardenBack = [ax, sy];
-    m.objs.push({ x: sx, y: sy, kind: 'secretdoor', to: `garden${i}`, tx: 1, ty: 7, dir: 'right', label: 'The hedge here is thin… there\'s a garden on the other side!' }); res(ax, sy); res(ax, sy - 1); res(ax, sy + 1); }
+    m.objs.push({ x: sx, y: sy, kind: 'secretdoor', to: `garden${i}`, tx: 1, ty: 7, dir: 'right', label: 'The hedge here is thin… there\'s a garden on the other side!' }); resH(ax, sy); res(ax, sy - 1); res(ax, sy + 1); }
   // ponds and little parks in the open strips
-  for (let k = 0; k < 2 + r.int(0, 2); k++) { const pw = r.int(3, 5), x0 = r.int(2, w - 3 - pw), y0 = r.pick([22, 22, 12, 2]); let ok = true; for (let y = y0; y < y0 + 2; y++) for (let x = x0; x < x0 + pw; x++) if (!free(x, y) || !free(x, y - 1) || !free(x, y + 2)) ok = false; if (!ok) continue; m.rect(x0, y0, pw, 2, T.WATER); for (let x = x0 - 1; x <= x0 + pw; x++) { if (free(x, y0 - 1) && r() < 0.5) m.set(x, y0 - 1, T.FLOWER); } }
+  for (let k = 0; k < 2 + r.int(0, 2); k++) { const pw = r.int(3, 5), x0 = r.int(2, w - 3 - pw), y0 = r.pick([32 - 4, 22, 12, 2]); let ok = true; for (let y = y0; y < y0 + 2; y++) for (let x = x0; x < x0 + pw; x++) if (!free(x, y) || !free(x, y - 1) || !free(x, y + 2)) ok = false; if (!ok) continue; m.rect(x0, y0, pw, 2, T.WATER); for (let x = x0 - 1; x <= x0 + pw; x++) { if (free(x, y0 - 1) && r() < 0.5) m.set(x, y0 - 1, T.FLOWER); } }
   reach = reachFrom();
-  const spots = []; for (let y = 2; y < 24; y++) for (let x = 2; x < 46; x++) if (free(x, y) && reach.has(x + ',' + y) && [m.get(x + 1, y), m.get(x - 1, y), m.get(x, y + 1), m.get(x, y - 1)].includes(T.PATH) && !(y === 9 || y === 10 || y === 19 || y === 20)) spots.push([x, y]);
+  const spots = []; for (let y = 2; y < h - 2; y++) for (let x = 2; x < 46; x++) if (free(x, y) && reach.has(x + ',' + y) && [m.get(x + 1, y), m.get(x - 1, y), m.get(x, y + 1), m.get(x, y - 1)].includes(T.PATH) && !STREETS.includes(y)) spots.push([x, y]);
   // also allow spots right beside the streets
-  for (let x = 3; x < 45; x++) for (const y of [8, 11, 18, 21]) if (m.get(x, y) === T.GRASS && x !== 13 && x !== 16 && !m.objs.some((o) => o.x === x && o.y === y) && ![8, 11, 18, 21].some(() => false)) spots.push([x, y]);
-  const take = () => { while (spots.length) { const [x, y] = spots.splice(r.int(0, spots.length - 1), 1)[0]; if (m.get(x, y) !== T.GRASS || m.objs.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2) || m.warps.some((q) => Math.abs(q.x - x) + Math.abs(q.y - y) < 2) || [m.get(x, y - 1), m.get(x, y + 1)].includes(T.DOOR) || [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => !SOLID.has(m.get(x + dx, y + dy))).length < 3 || reserved.has(x + ',' + y)) continue; return [x, y]; } return null; };
+  for (let x = 3; x < 45; x++) for (const y of [8, 11, 18, 21, 28, 31]) if (m.get(x, y) === T.GRASS && x !== 13 && x !== 16 && !m.objs.some((o) => o.x === x && o.y === y) && ![8, 11, 18, 21].some(() => false)) spots.push([x, y]);
+  const take = () => { while (spots.length) { const [x, y] = spots.splice(r.int(0, spots.length - 1), 1)[0]; if (m.get(x, y) !== T.GRASS || m.objs.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2) || m.warps.some((q) => Math.abs(q.x - x) + Math.abs(q.y - y) < 2) || [m.get(x, y - 1), m.get(x, y + 1)].includes(T.DOOR) || [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => !SOLID.has(m.get(x + dx, y + dy))).length < 3 || hard.has(x + ',' + y)) continue; const tmp = { x, y }; m.objs.push(tmp); const rc = reachFrom(); m.objs.pop(); if (m.objs.some((o) => !o.decor && !o.walkable && ![[1, 0], [-1, 0], [0, 1], [0, -1], [0, 0]].some(([dx, dy]) => rc.has(o.x + dx + ',' + (o.y + dy))))) continue; return [x, y]; } return null; };
   const pals = ['#d04040', '#3070d0', '#30a050', '#8040c0', '#e0a020', '#c06020', '#2080a0'];
   for (let k = 0; k < 6; k++) { const p = take(); if (!p) break; m.objs.push(npc(p[0], p[1], { name: W.trainerName(hash(c.name + SEED + k)).name, tips: tipLines(W, i, k), wander: k % 2 === 0, pal: { shirt: pals[k] } })); }
   { const p = take(); if (p) m.objs.push(npc(p[0], p[1], { kind: 'researcher', ci: i, name: 'Field Researcher', pal: { coat: true, shirt: '#30a050' } })); }
+  populateCity(W, i, m, r, take);
   { const p = take(); if (p) m.objs.push(npc(p[0], p[1], { name: 'Tutor', tips: tipLines(W, i, 13, 3), wander: true, pal: { coat: true, shirt: '#3060a0' } })); }
   const signBy = (d, text) => { for (const [dx, dy] of [[2, 1], [-2, 1], [3, 1], [-3, 1]]) { const x = d.dx + dx, y = d.dy + dy; if (free(x, y) || m.get(x, y) === T.FLOWER) { m.set(x, y, T.SIGN); m.objs.push({ x, y, kind: 'sign', text }); res(x, y); return; } } };
   signBy(doors.gym, [`${c.name} Mastery Hall`, `Leader ${c.leader} — "${c.theme}"`, 'Challengers must first pass the Study Lab trial.']);
   signBy(doors.academy, ['Academy', 'Lessons from easy to mastery. The Arcade nearby has mini games that train what you learn.']);
-  { const x = r() < 0.5 ? 13 : 16; m.set(x, 22, T.SIGN); m.objs.push({ x, y: 22, kind: 'sign', text: [`${c.name} — ${c.theme}`, `Mastery Hall Leader: ${c.leader}. Badge: ${c.badge}.`] }); }
-  { for (let t = 0; t < 60; t++) { const x = r.int(3, 44), y = r.int(3, 22); if (free(x, y) && reach.has(x + ',' + y)) { m.objs.push({ x, y, kind: 'item', hidden: true, walkable: true, item: 'maxtonic', count: 1, key: `c${i}h` }); res(x, y); break; } } }
+  { const x = r() < 0.5 ? 13 : 16; m.set(x, h - 3, T.SIGN); m.objs.push({ x, y: h - 3, kind: 'sign', text: [`${c.name}${arch ? ' — ' + arch.label : ''} · ${c.theme}`, `Mastery Hall Leader: ${c.leader}. Badge: ${c.badge}.`] }); }
+  { for (let t = 0; t < 60; t++) { const x = r.int(3, 44), y = r.int(3, h - 4); if (free(x, y) && reach.has(x + ',' + y)) { m.objs.push({ x, y, kind: 'item', hidden: true, walkable: true, item: 'maxtonic', count: 1, key: `c${i}h` }); res(x, y); break; } } }
   m.objs.push(npc(13, 2, { kind: 'guard', name: 'Gatekeeper', gate: 'badge', ci: i, dir: 'down' }));
+  decorateCity(W, i, m, r, (x, y) => free(x, y) && !m.objs.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2), res);
   const before = m.t.slice();
   scatter(m, r, 30 + r.int(0, 30), biome === 'neon' || biome === 'crystal' ? [T.TREE, T.FLOWER, T.ROCK] : [T.FLOWER, T.FLOWER, T.TREE, T.TREE, T.ROCK], (x, y) => reserved.has(x + ',' + y) || (x >= 13 && x <= 16) || [m.get(x + 1, y), m.get(x - 1, y), m.get(x, y + 1), m.get(x, y - 1)].some((t) => t === T.PATH || t === T.DOOR) || m.objs.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2));
-  { const rc = reachFrom(); const near = (o) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => rc.has(o.x + dx + ',' + (o.y + dy))); if (m.objs.some((o) => !near(o))) m.t.set ? m.t.set(before) : before.forEach((v, k) => { m.t[k] = v; }); }
+  { const rc = reachFrom(); const near = (o) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => rc.has(o.x + dx + ',' + (o.y + dy))); if (m.objs.some((o) => !near(o))) m.t.set ? m.t.set(before) : before.forEach((v, k) => { m.t[k] = v; });
+    for (let g = 0; g < 25; g++) { const rc2 = reachFrom(); const near2 = (o) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => rc2.has(o.x + dx + ',' + (o.y + dy))); const bad = m.objs.find((o) => !o.decor && !near2(o)); if (!bad) break; const decos = m.objs.filter((o) => o.kind === 'deco'); if (!decos.length) break; decos.sort((a2, b2) => Math.abs(a2.x - bad.x) + Math.abs(a2.y - bad.y) - Math.abs(b2.x - bad.x) - Math.abs(b2.y - bad.y)); m.objs.splice(m.objs.indexOf(decos[0]), 1); } }
   const ry = i + 2 <= 9 ? routeEntryY(W, i + 2) : 38;
   for (const x of [14, 15]) { m.warps.push({ x, y: h - 1, to: `zone${i + 1}`, tx: x, ty: 1, dir: 'down' }); m.warps.push({ x, y: 0, to: `route${i + 2}`, tx: 10 + (x - 14), ty: ry, dir: 'up' }); }
   openLinkPorts(W, m, 'city' + i);
-  Object.assign(m, { name: c.name, kind: 'town', biome, music: CITY_MOOD[biome] || 'town', ci: i, cityIdx: i, gateNorth: { y: 1, badge: i } });
+  Object.assign(m, { name: c.name, kind: 'town', biome, music: CITY_MOOD[biome] || 'town', ci: i, cityIdx: i, gateNorth: { y: 1, badge: i }, arch: arch?.id, blackout: scenOf(i)?.id === 'blackout' ? i : undefined });
   return m;
 }
 function cityInterior(W, i, kind) {
   const c = W.cities[i]; const back = `city${i}`;
+  const special = placeInterior(W, i, kind, doorOutside); if (special) { special.musicKey = special.musicKey || W.id + ':' + back + kind; return special; }
   const outside = doorOutside(W, back, kind);
   let m;
   const base = { ci: i, cityIdx: i, musicKey: W.id + ':' + back };
@@ -723,4 +732,16 @@ function summit(W) {
   m.objs.push(npc(6, 3, { kind: 'champion', name: W.champion.name }));
   Object.assign(m, { name: 'Mastery Summit', kind: 'interior', biome: 'interior', music: 'epic', ci: 'final', entry: { x: 6, y: h - 2 } });
   return m;
+}
+
+// Where a warp actually lands. Most warps carry tx/ty; doors into special buildings, cave ladders and holes are
+// worked out from the destination map so they always land on solid ground.
+export function resolveWarp(W, w, fromId) {
+  const m = getMap(W, w.to); const open = (x, y) => x > 0 && y > 0 && x < m.w - 1 && y < m.h - 1 && !SOLID.has(m.get(x, y)) && !m.objs.some((o) => o.x === x && o.y === y && !o.walkable) && !m.warps.some((q) => q.x === x && q.y === y);
+  const near = (x, y) => { for (let d = 0; d < 12; d++) for (let dy = -d; dy <= d; dy++) for (let dx = -d; dx <= d; dx++) if (Math.abs(dx) + Math.abs(dy) === d && open(x + dx, y + dy)) return [x + dx, y + dy]; return [x, y]; };
+  if (w.hole) return near(w.tx, w.ty);
+  if (w.ladderBack) { const d = m.warps.find((q) => q.ladder && !q.ladderBack && q.to === fromId); return d ? near(d.x, d.y + 1) : near(m.entry?.x ?? 2, m.entry?.y ?? 2); }
+  if (w.ladder && w.tx === undefined) return near(m.cave?.arrive?.[0] ?? m.entry.x, m.cave?.arrive?.[1] ?? m.entry.y);
+  if (w.tx === undefined) return near(m.entry?.x ?? Math.floor(m.w / 2), m.entry?.y ?? m.h - 2);
+  return [w.tx, w.ty];
 }

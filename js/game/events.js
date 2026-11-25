@@ -16,6 +16,8 @@ import * as puzzles from './puzzles.js';
 import { arcadeHandlers, secretHandlers, parkHandlers, discover } from './arcade.js';
 import { timeHandlers, timeTick, dailyCheck, eraQFn, season } from './time.js';
 import { dueEchoes } from './state.js';
+import { storyHandlers, scenarioDesc } from './story.js';
+import { scenActive, scenOf } from './places.js';
 
 const LEAD = ['Here\'s something worth knowing:', 'Pro tip:', 'Interviewers love this one:', 'I wrote this down in my notes:', 'Remember this:', 'Fun fact:'];
 const TRAINER_LINES = ['Let\'s see what you\'ve learned!', 'My monsters study every night. Do yours?', 'Answer fast or get flattened!', 'I just read the docs on this. Bring it!', 'Knowledge check! Ready?', 'You look like you need some practice!'];
@@ -44,7 +46,9 @@ export const events = {
     G.busy--;
   },
   doorBlocked(w) {
-    const m = G.world.map; if (w.kind !== 'gym' || m.cityIdx === undefined) return false;
+    const m = G.world.map;
+    if (m.cityIdx !== undefined && m.kind === 'town' && (w.kind === 'gym' || (w.kind === 'mend' && scenOf(m.cityIdx)?.id === 'lockdown'))) { const b = G.story.gymBlock(m.cityIdx); if (b) { G.busy++; say(...b).then(() => G.busy--); return true; } }
+    if (w.kind !== 'gym' || m.cityIdx === undefined) return false;
     if (S().flags['trial' + m.cityIdx]) return false;
     const dir = buildingDir(m, 'lab', w.x, w.y) || 'somewhere in town';
     G.busy++; say([`Hold on, challenger! The Mastery Hall only admits those who pass the *Study Lab Trial*.`, `The Study Lab is ${dir}.`], 'Hall Assistant').then(() => G.busy--);
@@ -56,6 +60,7 @@ export const events = {
       S().flags['visit' + map.cityIdx] = true; const c = W().cities[map.cityIdx];
       ui.toast(`New city: ${c.name} — ${c.theme}`, 3200);
     }
+    if (map.cityIdx !== undefined && map.kind === 'town') { G.busy++; try { await G.story.cityArrive(map.cityIdx); } finally { G.busy--; } }
     timeTick(); dailyCheck(); if (map.secret) discover(map.id); if (map.link !== undefined && !S().flags['lvisit' + map.link]) { S().flags['lvisit' + map.link] = 1; ui.toast(`🔁 Found a shortcut: ${map.name}!`, 3200); }
     if (map.id === 'sea' && !S().flags.lvisit_sea) { S().flags.lvisit_sea = 1; ui.toast('🌊 You swam out to the Azure Sea!', 3200); }
     if (map.zone && !S().flags['zvisit' + map.zone]) { S().flags['zvisit' + map.zone] = 1; ui.toast(`🧭 Discovered ${map.name}!`, 2600); }
@@ -138,7 +143,7 @@ export const events = {
     }
   },
 };
-G.events = events;
+G.events = events; G.menus = menus;
 
 async function spotted(o, p, dist) {
   G.busy++; o.bang = G.world.t + 0.9; audio.sfx('encounter'); await sleep(800);
@@ -150,11 +155,16 @@ async function spotted(o, p, dist) {
   o.x = o.ox; o.y = o.oy; o.px = o.x * 16; o.py = o.y * 16;
   G.busy--;
 }
-async function trainerBattle(o) {
-  const title = `${o.cls} ${o.name}`;
-  await say(R.pick(TRAINER_LINES), title);
-  const r = await runBattle({ kind: 'trainer', enemies: o.team, trainerTitle: title, trainerPal: personPalette(hash(G.world.map.id + o.i + (o.name || '')), o.pal || {}), money: o.money, qci: o.qci, biome: G.world.map.biome, music: 'battle', seed: o.key, after: R.pick(T_WIN), qfn: o.era ? eraQFn(o.era, 0.7) : undefined });
-  if (r === 'win') { S().trainers[o.key] = 1; if (o.tip) { await say([`Take this lesson with you:`, termLine(o.tip)], title); learn(o.tip); } }
+export async function trainerBattle(o) {
+  const title = `${o.cls} ${o.name}`; const palOf = (q) => personPalette(hash(G.world.map.id + q.i + (q.name || '')), q.pal || {});
+  const mate = o.pair ? G.world.objs.find((q) => q !== o && q.pair === o.pair && !S().trainers[q.key]) : null;
+  if (mate) { const t2 = `${mate.cls} ${mate.name}`; mate.dir = { up: 'down', down: 'up', left: 'right', right: 'left' }[G.world.lp[0].dir] || mate.dir; mate.bang = G.world.t + 0.9;
+    await say(o.pairLines || [`We go everywhere together — and we battle together!`], `${title} & ${t2}`); }
+  else await say(o.lines || R.pick(TRAINER_LINES), title);
+  const opts = { kind: 'trainer', enemies: o.team, trainerTitle: mate ? `${title} & ${mate.cls} ${mate.name}` : title, trainerPal: palOf(o), money: o.money + (mate ? mate.money : 0), qci: o.qci, biome: G.world.map.biome, music: o.music || 'battle', seed: o.key, after: o.after || R.pick(T_WIN), qfn: o.era ? eraQFn(o.era, 0.7) : undefined };
+  if (mate) opts.pair = [{ title, team: o.team, pal: palOf(o) }, { title: `${mate.cls} ${mate.name}`, team: mate.team, pal: palOf(mate) }];
+  const r = await runBattle(opts);
+  if (r === 'win') { S().trainers[o.key] = 1; if (mate) S().trainers[mate.key] = 1; G.story?.onTrainerBeaten?.(o, mate); if (o.tip) { await say([`Take this lesson with you:`, termLine(o.tip)], title); learn(o.tip); } }
   await afterBattle(r);
 }
 export async function afterBattle(r) {
@@ -191,6 +201,7 @@ export function objective() {
   for (let i = 0; i < 8; i++) {
     if (s.badges[i]) continue; const c = w.cities[i];
     if (!s.flags['visit' + i]) return `Travel north to ${c.name} (${c.theme}).`;
+    if (scenActive(s, i)) return scenarioDesc(i);
     if (!s.flags['trial' + i]) return `Pass the Study Lab Trial in ${c.name}.${hereHint((m) => m.id === 'city' + i, 'lab', 'the Study Lab')}`;
     return `Defeat Leader ${c.leader} at the ${c.name} Mastery Hall.${hereHint((m) => m.id === 'city' + i, 'gym', 'the Hall')}`;
   }
@@ -209,9 +220,10 @@ export function questList() {
     out.push({ title: `${c.name}: Study Stations`, desc: 'Complete the Match, Sequence and Speed stations in the Study Lab.', done: ['match', 'sequence', 'speed'].every((g) => s.flags[`st_${g}${i}`]) });
     out.push({ title: `${c.name}: Mentor's Gift`, desc: 'Visit the house and talk to the Mentor.', done: !!s.flags['gift' + i] });
   }
+  out.push(...G.story.questEntries());
   return out;
 }
-Promise.resolve().then(() => Object.assign(handlers, timeHandlers, arcadeHandlers, secretHandlers, parkHandlers));
+Promise.resolve().then(() => Object.assign(handlers, timeHandlers, arcadeHandlers, secretHandlers, parkHandlers, storyHandlers));
 const researchLine = (i) => { const pool = W().routeLines(i + 1); return pool[hash(W().id + 'res' + i) % pool.length]; };
 const lineCaught = (li) => W().lines[li].ids.some((id) => S().caught[id]);
 

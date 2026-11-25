@@ -138,7 +138,7 @@ function buildWorld(t) {
     const rl = W.routeLines(ci + 1); if (lines.length < 2) lines = lines.concat(rl);
     return W.makeTeam(hash(t.id + 'leader' + ci), lines, n, L);
   };
-  W.pickQ = (ci, save, opt = {}) => pickQuestion(W, ci, save, opt);
+  W.pickQ = (ci, save, opt = {}) => nextQuestion(save, () => pickQuestion(W, ci, save, opt));
   return W;
 }
 
@@ -151,13 +151,30 @@ export function levelFor(save, ci) {
   const pc = save?.stats?.perCity?.[String(ci)]; const c = pc ? pc.c : 0;
   let l = c < 8 ? 1 : c < 24 ? 2 : 3; if (save?.badges?.[ci]) l = Math.max(l, 2); if (save?.champion) l = 3; return l;
 }
+// Global guard against seeing the same question text again too soon (covers
+// generated, vocab and era questions too). History is kept in the save so it
+// survives reloads.
+const qKey = (q) => String(q?.q || '').replace(/^⏳\s*/, '').trim().toLowerCase().slice(0, 90);
+export function recentlyAsked(save, q) { const k = qKey(q); return !!k && !!save?.qHist?.includes(k); }
+export function noteAsked(save, q) { if (!save) return; const k = qKey(q); if (!k) return; const h = (save.qHist || []).filter((x) => x !== k); h.push(k); save.qHist = h.slice(-60); }
+export function nextQuestion(save, get, tries = 16) {
+  // Draw until we find one not seen recently; if every draw is recent, use the one asked longest ago.
+  const H = save?.qHist || []; let best = null, bestAge = -1;
+  for (let n = 0; n <= tries; n++) {
+    const q = get(); if (!q) continue; if (q.echo) { best = q; break; }
+    const at = H.lastIndexOf(qKey(q)); const age = at < 0 ? Infinity : H.length - at;
+    if (age > bestAge) { best = q; bestAge = age; } if (age === Infinity || age > 25) break;
+  }
+  noteAsked(save, best); return best;
+}
 export const LEVEL_NAME = ['', 'Easy', 'Medium', 'Mastery'];
 const pickLv = (arr, lvl, recent = []) => {
-  const ok = arr.filter((x) => (x.lvl || 1) <= lvl && !recent.includes(x.id)); const src = ok.length ? ok : arr.filter((x) => (x.lvl || 1) <= lvl);
+  const ok = arr.filter((x) => (x.lvl || 1) <= lvl && !recent.includes(x.id)); let src = ok.length ? ok : arr.filter((x) => (x.lvl || 1) <= lvl);
+  if (!ok.length && src.length > 1) { const age = (x) => recent.lastIndexOf(x.id); src = src.slice().sort((a, b) => age(a) - age(b)).slice(0, Math.max(1, Math.ceil(src.length / 3))); return R.pick(src); }
   if (!src.length) return null; const top = src.filter((x) => (x.lvl || 1) === lvl);
   return R.pick(top.length && R() < 0.6 ? top : src);
 };
-const remember = (W, id) => { W.recent.push(id); W.recent = W.recent.slice(-14); };
+const remember = (W, id) => { W.recent.push(id); W.recent = W.recent.slice(-40); };
 const otherVocab = (W, city, v, n = 3) => { let pool = city.vocab.filter((x) => x.id !== v.id && x.en !== v.en && x.w !== v.w); if (pool.length < n) pool = pool.concat(W.cities.flatMap((c) => c.vocab).filter((x) => x.id !== v.id && x.en !== v.en && x.w !== v.w)); return shuffle(pool).slice(0, n); };
 export function vocabQ(W, city, lvl, dir) {
   const v = pickLv(city.vocab, lvl, W.recent); if (!v) return null; remember(W, v.id); const o = otherVocab(W, city, v); if (o.length < 3) return null;

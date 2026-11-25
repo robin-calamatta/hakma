@@ -268,5 +268,14 @@ export const ERAS = {
       ['Synthetic biology means…', 'Designing and building new biological parts and systems', 'Plastic animals', 'Robots made of metal', 'Studying fossils only', 'E.g. microbes engineered to make medicines.']]),
   },
 };
-const SET = { engmanager: 'softeng', systemdesign: 'devops', cybersec: 'security', hacking: 'security', trading: 'finance', electrician: 'electrical', 'math-elem': 'math', 'math-middle': 'math', 'math-high': 'math', 'ela-elem': 'ela', 'ela-high': 'ela', 'science-elem': 'science' };
+import { MORE } from './eras-more.js';
+import { MORE2 } from './eras-more2.js';
+for (const [k, v] of Object.entries({ ...MORE, ...MORE2 })) {
+  for (const era of ['past', 'future']) {
+    const add = v[era]; if (!add) continue;
+    if (Array.isArray(add)) { if (ERAS[k]?.[era]) ERAS[k][era].qs.push(...add); }
+    else { ERAS[k] = ERAS[k] || {}; ERAS[k][era] = E(add.name, add.years, add.facts, add.qs); }
+  }
+}
+const SET = { cybersec: 'security', hacking: 'security', trading: 'finance', electrician: 'electrical', 'math-elem': 'math', 'math-middle': 'math', 'math-high': 'math', 'ela-elem': 'ela', 'ela-high': 'ela', 'science-elem': 'science' };
 export const eraSetFor = (topicId) => ERAS[SET[topicId] || topicId] || ERAS.cs;

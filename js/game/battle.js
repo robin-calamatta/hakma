@@ -1,5 +1,5 @@
 // Battles: every attack is a question. Correct = hit, fast = Quick Recall crit, wrong = miss + explanation.
-import { RARITY } from './content.js';
+import { RARITY, noteAsked } from './content.js';
 import { STATUS, lookOf } from './state.js';
 import { G, ITEMS, xpToNext, makeMon, stats, maxHp, movesOf, monName, gainXp, checkEvolve, evolve, addMon, recordAnswer, badgeCount } from './state.js';
 import { view } from '../core/view.js';
@@ -45,6 +45,11 @@ class BattleScene {
     const map = G.world?.map; this.bg = makeBg(opts.biome || map?.biome || 'meadow', opts.kind);
     this.sprites = {}; this.trainerX = null; this.msgWait = null;
   }
+  get enemyVisible() { return !!this.enemy?.visible; }
+  set enemyVisible(v) { if (this.enemy) this.enemy.visible = v; }
+  get double() { return (this.foes || []).length > 1; }
+  liveFoes() { return (this.foes || []).filter((f) => !f.done && f.mon && f.mon.hp > 0 && f.visible); }
+  foePos(key) { const y0 = 96 + (view.h > 216 ? 14 : 0); if (!this.double) return { x: view.w - 92, y: y0, s: 1.6 }; return key === 'e1' ? { x: view.w - 50, y: y0 - 6, s: 1.3 } : { x: view.w - 134, y: y0 + 4, s: 1.3 }; }
   spr(key) { return this.sprites[key] || (this.sprites[key] = { x: 0, y: 0, a: 1, s: 1, flash: 0, glow: 0 }); }
   allyPos(k, n) { const xs = [[110], [72, 170], [56, 122, 188], [46, 104, 162, 220]][n - 1]; const sc = [2, 1.7, 1.5, 1.35][n - 1]; return { x: xs[k] + 8 - (view.w < 384 ? 20 : 0), y: Math.round(view.h * 0.75), s: sc }; }
   update(dt) {
@@ -88,8 +93,8 @@ class BattleScene {
       if (st.flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = st.flash; g.drawImage(c, Math.round(x + st.x - w / 2), Math.round(y + st.y - h), w, h); g.globalCompositeOperation = 'source-over'; }
       g.globalAlpha = 1;
     };
-    if (this.trainerX !== null && this.o.trainerPal) { const sh = personSheet(this.o.trainerPal); g.drawImage(sh, 0, 0, 16, 20, this.trainerX - 24, 30, 48, 60); }
-    if (this.enemy && this.enemyVisible) drawMon(G.W.species[this.enemy.mon.sp], false, view.w - 92, 96 + (view.h > 216 ? 14 : 0), 1.6, this.spr('e'), 0, this.enemy.mon, true);
+    if (this.trainerX !== null && this.o.trainerPal) { const sh = personSheet(this.o.trainerPal); g.drawImage(sh, 0, 0, 16, 20, this.trainerX - 24 - (this.o.pair ? 26 : 0), 30, 48, 60); if (this.o.pair && this.o.pair[1].pal) g.drawImage(personSheet(this.o.pair[1].pal), 0, 0, 16, 20, this.trainerX + 4, 34, 48, 60); }
+    for (const f of this.foes || []) if (f.mon && f.visible) { const P = this.foePos(f.key); drawMon(G.W.species[f.mon.sp], false, P.x, P.y, P.s, this.spr(f.key), f.key === 'e1' ? 2.5 : 0, f.mon, true); }
     const n = this.allies.length;
     this.allies.forEach((al, k) => { if (!al.visible) return; const p = this.allyPos(k, n); drawMon(G.W.species[al.mon.sp], true, p.x, p.y, p.s, this.spr('a' + k), k + 1, al.mon, false); });
     if (this.cube) { const c = this.cube; g.fillStyle = '#14101c'; g.fillRect(c.x - 5, c.y - 5, 10, 10); g.fillStyle = c.col; g.fillRect(c.x - 4, c.y - 4, 8, 8); g.fillStyle = '#fff'; g.fillRect(c.x - 4, c.y - 4, 3, 2); }
@@ -126,17 +131,19 @@ class BattleScene {
     const box = (m, cls, extra = '') => { const sp = W.species[m.sp]; const mh = this.hpMax(m, cls === 'enemy'); const pct = clamp(m.hp / mh, 0, 1) * 100; const col = pct > 50 ? 'g' : pct > 20 ? 'y' : 'r';
       return `<div class="bhud ${cls}"><div class="nm">${esc(monName(W, m))}${m.shiny ? ' <span class="shinymark">✦</span>' : ''} <span class="lv">Lv${m.lvl}</span></div><div class="rar" style="color:${RARITY[sp.rarity]?.color}">${'★'.repeat(RARITY[sp.rarity]?.stars || 1)} ${RARITY[sp.rarity]?.name || ''}</div><div class="tt"><span class="type t-${sp.type}">${TYPES[sp.type].name}</span>${m.status ? `<span class="stat st-${m.status}">${STATUS[m.status].tag}</span>` : ''}${extra}</div><div class="hp"><i class="${col}" style="width:${pct}%"></i></div>${cls !== 'enemy' ? `<div class="hpn">${Math.max(0, Math.ceil(m.hp))}/${mh}</div>` : ''}</div>`; };
     let h = '';
-    if (this.enemy && this.enemyVisible) h += box(this.enemy.mon, 'enemy', this.o.kind === 'wild' && G.save.caught[this.enemy.mon.sp] ? ' <span class="caughtmark">◆</span>' : '');
+    const dots = (f) => (this.o.kind !== 'wild' && f.team ? `<span class="fdots">${f.team.map((t, i) => `<i class="${i < f.ei ? 'out' : ''}"></i>`).join('')}</span>` : '');
+    if (this.double) h += `<div class="enemyhuds">${this.foes.map((f) => (f.mon && f.visible ? box(f.mon, 'enemy', dots(f)) : '')).join('')}</div>`;
+    else if (this.enemy && this.enemyVisible) h += box(this.enemy.mon, 'enemy', this.o.kind === 'wild' && G.save.caught[this.enemy.mon.sp] ? ' <span class="caughtmark">◆</span>' : '');
     h += `<div class="allyhuds ${this.allies.length > 1 ? 'compact' : ''}">` + this.allies.map((a, k) => a.visible ? box(a.mon, 'ally', this.allies.length > 1 ? ` <span class="pl" style="background:${G.save.players[a.pi].color}">P${a.pi + 1}</span>` : '') : '').join('') + '</div>';
     h += `<div class="btext">${this.text ? fmt(esc(this.text)) : ''}</div>`;
-    if (this.o.kind !== 'wild' && this.team) h += `<div class="teamdots">${this.team.map((t, i) => `<i class="${i < this.ei ? 'out' : ''}"></i>`).join('')}</div>`;
+    if (this.o.kind !== 'wild' && !this.double && this.enemy?.team) h += `<div class="teamdots">${this.enemy.team.map((t, i) => `<i class="${i < this.enemy.ei ? 'out' : ''}"></i>`).join('')}</div>`;
     el.innerHTML = h; el.className = 'battle';
   }
   hpMax(m, enemy) { return Math.round(maxHp(G.W, m) * (enemy ? this.hpMul : 1)); }
   msg(text, ms) { this.text = text; this.hud(); const t = ms ?? clamp(500 + text.length * 28, 900, 2600); return new Promise((res) => { const to = setTimeout(() => { this.msgWait = null; res(); }, t); this.msgWait = () => { clearTimeout(to); res(); }; }); }
   async hpTo(m, enemy, to) { const from = m.hp; await tween(380, (k) => { m.hp = from + (to - from) * ease(k); this.hud(); }); m.hp = to; this.hud(); }
   burst(x, y, col, n = 18, sp = 90) { for (let i = 0; i < n; i++) { const a = R() * 6.28, v = sp * (0.3 + R()); this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 60, life: 0.4 + R() * 0.4, c: R() < 0.3 ? '#fff' : col, s: R() < 0.5 ? 2 : 3 }); } }
-  posOf(side) { if (side === 'e') return { x: view.w - 92, y: 60 + (view.h > 216 ? 14 : 0) }; const k = +side.slice(1); const p = this.allyPos(k, this.allies.length); return { x: p.x, y: p.y - 50 }; }
+  posOf(side) { if (side === 'e' || side === 'e1') { const P = this.foePos(side); return { x: P.x, y: P.y - 36 }; } const k = +side.slice(1); const p = this.allyPos(k, this.allies.length); return { x: p.x, y: p.y - 50 }; }
   async animAttack(src, dst, type) {
     const s = this.spr(src), S = this.posOf(src), D = this.posOf(dst); const col = TYPES[type]?.color || '#fff';
     const dx = Math.sign(D.x - S.x) * 16, dy = Math.sign(D.y - S.y) * 8;
@@ -159,33 +166,38 @@ class BattleScene {
     const W = G.W, o = this.o; this.hpMul = 1;
     this.allies = []; G.save.players.forEach((p, pi) => { const m = p.party.find((x) => x.hp > 0); if (m) this.allies.push({ pi, mon: m, boost: 0, visible: false, part: new Set([m.uid]) }); });
     if (!this.allies.length) return 'lose';
-    this.team = o.enemies; this.ei = 0;
+    if (G.save.flags.fizz && o.kind !== 'wild') { delete G.save.flags.fizz; this.allies.forEach((a) => { a.boost = 1; }); this.fizzed = true; }
+    this.foes = (o.pair || [{ title: o.trainerTitle, team: o.enemies, pal: o.trainerPal }]).map((f, j) => ({ ...f, key: j ? 'e1' : 'e', ei: 0, visible: false, mon: null, boost: 0 }));
+    this.team = this.foes[0].team; this.ei = 0;
     if (o.kind === 'wild' && this.allies.length > 1) this.hpMul = 1 + 0.65 * (this.allies.length - 1);
     // intro wipe
     audio.play('battle:' + (o.music || 'battle') + ':' + (o.seed || W.id), o.seed || W.id, o.music || 'battle');
     this.wipe = 1; await tween(380, (k) => { this.wipe = 1 - k; }); this.wipe = undefined;
-    const spawnEnemy = (k) => { const e = o.enemies[k]; const mon = makeMon(W, e.sp, e.lvl); if (e.era) mon.era = e.era; if (e.shiny) mon.shiny = true; mon.hp = this.hpMax(mon, true); this.enemy = { mon, boost: 0 }; G.save.seen[e.sp] = 1; };
-    spawnEnemy(0);
+    const spawn = (f) => { const e = f.team[f.ei]; const mon = makeMon(W, e.sp, e.lvl); if (e.era) mon.era = e.era; if (e.shiny) mon.shiny = true; mon.hp = this.hpMax(mon, true); f.mon = mon; f.boost = 0; G.save.seen[e.sp] = 1; };
+    this.foes.forEach(spawn); this.enemy = this.foes[0];
     if (o.kind === 'wild') { this.enemyVisible = true; this.spr('e').x = 160; this.hud(); await tween(400, (k) => { this.spr('e').x = 160 * (1 - ease(k)); }); const esp = W.species[this.enemy.mon.sp]; const rr = esp.rarity;
       if (this.enemy.mon.shiny || rr === 'epic' || rr === 'legendary' || rr === 'mythic') { audio.sfx('evolve'); const ep = this.posOf('e'); for (let i = 0; i < 4; i++) this.burst(ep.x, ep.y, RARITY[rr]?.color || '#ffd23f', 14, 90); }
       await this.msg(rr === 'mythic' ? `✦✦ The MYTHIC ${esp.name}, ${esp.title}, descends! ✦✦` : rr === 'legendary' ? `★ The legendary ${esp.name}, ${esp.title}, appeared! ★` : this.enemy.mon.shiny ? `✦ A shimmering PRISMATIC ${esp.name} appeared! ✦` : rr === 'epic' ? `A wild EPIC ${esp.name} appeared!` : `A wild ${esp.name} appeared!`); }
     else {
       this.trainerX = view.w + 36; await tween(400, (k) => { this.trainerX = view.w + 36 - 128 * ease(k); });
-      await this.msg(o.introMsg || `${o.trainerTitle} wants to battle!`);
+      await this.msg(o.introMsg || (o.pair ? `${o.pair[0].title} and ${o.pair[1].title} want to battle together!` : `${o.trainerTitle} wants to battle!`));
       await tween(300, (k) => { this.trainerX = view.w - 92 + 140 * k; }); this.trainerX = null;
-      this.enemyVisible = true; this.spr('e').a = 0; this.hud(); await this.animEnter('e'); await this.msg(`${o.trainerTitle} sent out ${W.species[this.enemy.mon.sp].name}!`, 1100);
+      for (const f of this.foes) { this.enemy = f; f.visible = true; this.spr(f.key).a = 0; this.hud(); await this.animEnter(f.key); await this.msg(`${f.title} sent out ${W.species[f.mon.sp].name}!`, 1100); }
+      this.enemy = this.foes[0];
     }
     for (let k = 0; k < this.allies.length; k++) { this.allies[k].visible = true; this.hud(); await this.animEnter('a' + k); }
     await this.msg(this.allies.length > 1 ? 'Team, go!' : `Go, ${monName(W, this.allies[0].mon)}!`, 800);
+    if (this.fizzed) await this.msg('The Prairie Fizz kicks in — attack rose!', 1000);
     // main loop
     for (;;) {
       for (let k = 0; k < this.allies.length; k++) {
         const al = this.allies[k]; if (!al.mon || al.mon.hp <= 0) continue;
+        if (!this.liveFoes().includes(this.enemy)) this.enemy = this.liveFoes()[0] || this.enemy;
         const r = await this.allyTurn(al, k);
         if (r === 'run' || r === 'caught') return this.finish(r);
         if (this.enemy.mon.hp <= 0) { const over = await this.enemyFainted(); if (over) return this.finish('win'); }
       }
-      if (this.enemy.mon.hp > 0) { const lost = await this.enemyTurn(); if (lost) return this.finish('lose'); }
+      for (const f of this.liveFoes()) { this.enemy = f; const lost = await this.enemyTurn(); if (lost) return this.finish('lose'); }
       const t = await this.statusTick(); if (t) return this.finish(t);
     }
   }
@@ -199,6 +211,8 @@ class BattleScene {
       if (c === 0) {
         const mv = movesOf(W, al.mon); const opts = mv.map((m) => ({ html: `<span class="mvn">${esc(m.name)}</span><span class="mvt t-${m.type}">${m.kind === 'boost' ? 'Boost' : TYPES[m.type].name + ' · ' + m.power}</span>${m.kind !== 'boost' ? effTag(effectiveness(m.type, W.species[this.enemy.mon.sp].type)) : ''}` }));
         const mi = await ui.choose(null, opts, { cls: 'bmenu moves', cols: 2 }); if (mi < 0) continue;
+        const lf = this.liveFoes();
+        if (mv[mi].kind !== 'boost' && lf.length > 1) { const ti = await ui.choose('Which foe?', lf.map((f) => ({ html: `${esc(W.species[f.mon.sp].name)} <span class="lv">Lv${f.mon.lvl}</span> <span class="type t-${W.species[f.mon.sp].type}">${TYPES[W.species[f.mon.sp].type].name}</span>${effTag(effectiveness(mv[mi].type, W.species[f.mon.sp].type))}` })), { cls: 'bmenu', cols: 2 }); if (ti < 0) continue; this.enemy = lf[ti]; }
         await this.useMove(al, k, mv[mi]); return;
       }
       if (c === 1) { const r = await this.bag(al, k); if (r === 'back') continue; return r; }
@@ -211,7 +225,7 @@ class BattleScene {
     }
   }
   async ask(al, tag) {
-    const W = G.W; const q = this.o.qfn?.() || W.pickQ(this.o.qci ?? G.world.chapter(), G.save, { review: this.o.kind === 'wild' ? 0.25 : 0.15 });
+    const W = G.W; const eq = this.o.qfn?.(); if (eq && !eq.echo) noteAsked(G.save, eq); const q = eq || W.pickQ(this.o.qci ?? G.world.chapter(), G.save, { review: this.o.kind === 'wild' ? 0.25 : 0.15 });
     const res = await ui.question(q, { tag, who: this.allies.length > 1 ? `P${al.pi + 1} ${G.save.players[al.pi].name}` : null });
     recordAnswer(G.save, q, res.correct, res.quick);
     if (res.correct) { const bonus = Math.round(4 + al.mon.lvl * 1.6 + (res.quick ? 4 : 0)); const ev = gainXp(W, al.mon, bonus); al.xpLog = (al.xpLog || 0) + bonus; await this.levelEvents(al.mon, ev); }
@@ -228,14 +242,14 @@ class BattleScene {
     }
     if (!res.correct) { await this.msg(`${nm} used ${mv.name}... but it missed!`); return; }
     await this.msg(`${nm} used ${mv.name}!`, 600);
-    await this.animAttack('a' + k, 'e', mv.type);
+    await this.animAttack('a' + k, this.enemy.key, mv.type);
     const { dmg, eff } = this.damage(al.mon, al.boost, this.enemy.mon, this.enemy.boost, mv, res.quick ? 1.5 : 1);
     audio.sfx(eff > 1 ? 'super' : eff < 1 ? 'weak' : 'hit');
-    await this.animHit('e', mv.type, eff > 1 || res.quick);
+    await this.animHit(this.enemy.key, mv.type, eff > 1 || res.quick);
     await this.hpTo(this.enemy.mon, true, Math.max(0, this.enemy.mon.hp - dmg));
     if (res.quick) await this.msg('⚡ Quick Recall! A critical hit!', 900);
     if (eff > 1) await this.msg("It's super effective!", 900); else if (eff < 1) await this.msg("It's not very effective...", 900);
-    await this.tryInflict(this.enemy.mon, mv.type, (this.o.kind === 'wild' ? 'The wild ' : 'Foe ') + W.species[this.enemy.mon.sp].name, 'e');
+    await this.tryInflict(this.enemy.mon, mv.type, (this.o.kind === 'wild' ? 'The wild ' : 'Foe ') + W.species[this.enemy.mon.sp].name, this.enemy.key);
   }
   async tryInflict(m, type, who, side) {
     if (!m || m.hp <= 0 || m.status) return;
@@ -257,9 +271,9 @@ class BattleScene {
       }
     }
     if (!this.allies.some((a) => a.mon && a.mon.hp > 0)) return 'lose';
-    const e = this.enemy.mon;
-    if (e && e.hp > 0 && e.status) {
-      const st = STATUS[e.status]; const dmg = Math.max(1, Math.round(this.hpMax(e, true) * st.tick)); this.statusBurst('e', st.col);
+    for (const f of this.liveFoes()) {
+      const e = f.mon; if (!e.status) continue; this.enemy = f;
+      const st = STATUS[e.status]; const dmg = Math.max(1, Math.round(this.hpMax(e, true) * st.tick)); this.statusBurst(f.key, st.col);
       await this.hpTo(e, true, Math.max(0, e.hp - dmg)); await this.msg(`${W.species[e.sp].name} is hurt by being ${st.name.toLowerCase()}!`, 1000);
       if (e.hp <= 0) { const over = await this.enemyFainted(); if (over) return 'win'; }
     }
@@ -277,11 +291,11 @@ class BattleScene {
     const tgt = R.pick(alive); const k = this.allies.indexOf(tgt);
     const mv = movesOf(W, e.mon); const hits = mv.filter((m) => m.kind === 'hit');
     const ename = (this.o.kind === 'wild' ? 'The wild ' : 'Foe ') + W.species[e.mon.sp].name;
-    if (e.mon.status === 'sick' && R() < 0.25) { this.statusBurst('e', STATUS.sick.col); await this.msg(`${ename} feels too sick to move!`, 1100); return false; }
-    if (e.boost < 2 && R() < 0.18) { const b = mv.find((m) => m.kind === 'boost'); if (b) { e.boost++; await this.animBoost('e'); await this.msg(`${ename} used ${b.name}! Its attack rose!`); return false; } }
+    if (e.mon.status === 'sick' && R() < 0.25) { this.statusBurst(e.key, STATUS.sick.col); await this.msg(`${ename} feels too sick to move!`, 1100); return false; }
+    if (e.boost < 2 && R() < 0.18) { const b = mv.find((m) => m.kind === 'boost'); if (b) { e.boost++; await this.animBoost(e.key); await this.msg(`${ename} used ${b.name}! Its attack rose!`); return false; } }
     let best = hits[0], bs = -1; for (const m of hits) { const s = m.power * effectiveness(m.type, W.species[tgt.mon.sp].type) * (0.7 + R() * 0.6); if (s > bs) { bs = s; best = m; } }
     await this.msg(`${ename} used ${best.name}!`, 650);
-    await this.animAttack('e', 'a' + k, best.type);
+    await this.animAttack(e.key, 'a' + k, best.type);
     const lvlScale = this.o.kind === 'wild' ? 0.9 : 1;
     const { dmg, eff } = this.damage(e.mon, e.boost, tgt.mon, tgt.boost, best, lvlScale);
     audio.sfx(eff > 1 ? 'super' : eff < 1 ? 'weak' : 'hit');
@@ -298,7 +312,7 @@ class BattleScene {
     return !this.allies.some((a) => a.mon && a.mon.hp > 0);
   }
   async enemyFainted() {
-    const W = G.W; const e = this.enemy; await this.animFaint('e'); this.enemyVisible = false; this.hud();
+    const W = G.W; const e = this.enemy; await this.animFaint(e.key); e.visible = false; this.hud();
     await this.msg(`${this.o.kind === 'wild' ? 'The wild' : 'Foe'} ${W.species[e.mon.sp].name} fainted!`);
     const sp = W.species[e.mon.sp]; const mult = this.o.kind === 'wild' ? 1 : this.o.kind === 'trainer' ? 1.5 : 1.8;
     const xp = Math.round(((15 + 10 * sp.stage) * e.mon.lvl / 3) * mult);
@@ -306,17 +320,17 @@ class BattleScene {
       if (!al.mon) continue; const p = G.save.players[al.pi];
       for (const m of p.party) { if (m.hp <= 0 || !al.part.has(m.uid)) continue; const amt = m === al.mon ? xp : Math.round(xp / 2); await this.msg(`${monName(W, m)} gained ${amt} XP!`, 800); await this.levelEvents(m, gainXp(W, m, amt)); }
     }
-    this.ei++;
-    if (this.ei >= this.team.length) return true;
-    const nx = this.team[this.ei]; const mon = makeMon(W, nx.sp, nx.lvl); mon.hp = this.hpMax(mon, true); this.enemy = { mon, boost: 0 }; G.save.seen[nx.sp] = 1;
+    e.ei++; if (e === this.foes[0]) this.ei = e.ei;
+    if (e.ei >= e.team.length) { e.done = true; if (this.foes.every((f) => f.done)) return true; const other = this.foes.find((f) => !f.done); if (this.o.pair) await this.msg(`${e.title} is out of monsters! ${other.title} fights on!`, 1300); this.enemy = other; return false; }
+    const nx = e.team[e.ei]; const mon = makeMon(W, nx.sp, nx.lvl); mon.hp = this.hpMax(mon, true); e.mon = mon; e.boost = 0; G.save.seen[nx.sp] = 1;
     // tell the player what's coming and let them swap before it arrives
     const nsp = W.species[nx.sp]; const info = `${nsp.name} (${TYPES[nsp.type]?.name || nsp.type} type) · Lv ${nx.lvl}`;
     for (let k = 0; k < this.allies.length; k++) { const al = this.allies[k]; if (!al.mon || al.mon.hp <= 0) continue; const p = G.save.players[al.pi];
       if (!p.party.some((m) => m.hp > 0 && m !== al.mon)) continue;
-      const c = await ui.choose(`${this.o.trainerTitle} is about to send out *${info}*. ${this.allies.length > 1 ? p.name + ': ' : ''}Switch monsters, or keep ${monName(W, al.mon)} in?`, [`Keep ${monName(W, al.mon)}`, 'Switch monster'], { cancel: false });
+      const c = await ui.choose(`${e.title || this.o.trainerTitle} is about to send out *${info}*. ${this.allies.length > 1 ? p.name + ': ' : ''}Switch monsters, or keep ${monName(W, al.mon)} in?`, [`Keep ${monName(W, al.mon)}`, 'Switch monster'], { cancel: false });
       if (c === 1) await this.switchMenu(al, k, true, info); }
-    this.spr('e').y = 0; this.spr('e').a = 0; this.enemyVisible = true; this.hud(); await this.animEnter('e');
-    await this.msg(`${this.o.trainerTitle} sent out ${W.species[nx.sp].name}!`);
+    this.spr(e.key).y = 0; this.spr(e.key).a = 0; e.visible = true; this.hud(); await this.animEnter(e.key);
+    await this.msg(`${e.title || this.o.trainerTitle} sent out ${W.species[nx.sp].name}!`);
     return false;
   }
   async levelEvents(m, ev) {

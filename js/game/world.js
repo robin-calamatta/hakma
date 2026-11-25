@@ -2,7 +2,7 @@
 import { drawSeason, drawEraTint, season } from './time.js';
 import { G, PLAYER_COLORS, lookOf } from './state.js';
 import { view } from '../core/view.js';
-import { getMap } from './maps.js';
+import { getMap, resolveWarp } from './maps.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { monsterCanvas } from '../core/sprites.js';
@@ -14,7 +14,7 @@ import { ui } from './ui.js';
 
 const TS = 16;
 const DX = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-const PEOPLE = new Set(['rideop', 'mascot', 'teacher', 'arcadehost', 'keeper', 'seasonal', 'npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
+const PEOPLE = new Set(['quest', 'kid', 'hostage', 'bartender', 'sheriff', 'cocoa', 'cablecar', 'milk', 'spring', 'vr', 'skater', 'mallshop', 'stylist', 'rideop', 'mascot', 'teacher', 'arcadehost', 'keeper', 'seasonal', 'npc', 'guardian', 'prof', 'nurse', 'clerk', 'trainer', 'leader', 'guard', 'researcher', 'labkeeper', 'gymguide', 'gifter', 'elite', 'champion']);
 
 // A player's look: their saved wardrobe choices (p.look), falling back to the original per-player defaults.
 export function playerPalette(p, i) {
@@ -133,10 +133,11 @@ export class World {
     // NPC wander
     for (const o of this.objs) {
       if (!o.wander || !this.canControl()) continue;
-      if (o.moving) { o.mt += dt / 0.3; const k = Math.min(1, o.mt); o.px = (o.fx + (o.x - o.fx) * k) * TS; o.py = (o.fy + (o.y - o.fy) * k) * TS; if (k >= 1) o.moving = false; continue; }
+      if (o.moving) { o.mt += dt / 0.3; const k = Math.min(1, o.mt); o.px = (o.fx + (o.x - o.fx) * k) * TS; o.py = (o.fy + (o.y - o.fy) * k) * TS; if (k >= 1) { o.moving = false; if (o.kind === 'trainer' && !G.busy) G.events.checkSight(this.lp); } continue; }
       o.wt -= dt; if (o.wt > 0) continue; o.wt = 1.5 + R() * 3;
       const d = R.pick(['up', 'down', 'left', 'right']); o.dir = d; const nx = o.x + DX[d][0], ny = o.y + DX[d][1];
-      if (Math.abs(nx - o.ox) > 2 || Math.abs(ny - o.oy) > 2 || this.solid(nx, ny, o) || this.lp.some((p) => p.x === nx && p.y === ny) || this.map.warps.some((w) => w.x === nx && w.y === ny)) continue;
+      if (o.kind === 'trainer' && R() < 0.35) { o.dir = d; if (!G.busy) G.events.checkSight(this.lp); continue; }
+      if (Math.abs(nx - o.ox) > (o.range || 2) || Math.abs(ny - o.oy) > (o.range || 2) || this.solid(nx, ny, o) || this.lp.some((p) => p.x === nx && p.y === ny) || this.map.warps.some((w) => w.x === nx && w.y === ny)) continue;
       o.fx = o.x; o.fy = o.y; o.x = nx; o.y = ny; o.mt = 0; o.moving = true;
     }
     // peers interpolate
@@ -164,13 +165,13 @@ export class World {
     }
     if (warp && warp.door && G.events.doorBlocked(warp)) return;
     if (warp && warp.stairs && !G.save.flags.topic) { G.events.roomLocked(p); return; } // pick a subject before leaving your room
-    p.fx = p.x; p.fy = p.y; p.x = nx; p.y = ny; p.mt = 0; p.moving = true; p.stepT = run ? 0.1 : 0.18;
+    p.fx = p.x; p.fy = p.y; p.x = nx; p.y = ny; p.mt = 0; p.moving = true; p.stepT = this.boarding(p) ? 0.065 : run ? 0.1 : 0.18;
     this.followStep(p);
   }
   afterStep(p) {
     const m = this.map; this.savePos(); G.net?.sendPos?.();
     const w = m.warps.find((q) => q.x === p.x && q.y === p.y);
-    if (w) { this.warp(w.to, w.tx, w.ty, w.dir || p.dir, w); return; }
+    if (w) { const [tx, ty] = resolveWarp(G.W, w, m.id); if (w.hole) { audio.sfx('faint'); ui.toast('Whoa! You fell through a hole!'); } this.warp(w.to, tx, ty, w.dir || p.dir, w); return; }
     if (p.surf && m.get(p.x, p.y) !== T.WATER) { p.surf = false; audio.sfx('blip'); }
     if (G.busy) return;
     if (p.surf && m.encounter && !m.noEncounters) { if (this.noEnc > 0) this.noEnc--; else if (R() < 0.04) { G.events.wild(p); return; } }
@@ -231,7 +232,9 @@ export class World {
     if (!inside && B === 'neon') { g.fillStyle = 'rgba(40,0,80,0.12)'; g.fillRect(0, 0, view.w, view.h); }
     if (!inside && B === 'volcano') { g.fillStyle = 'rgba(255,80,20,0.08)'; g.fillRect(0, 0, view.w, view.h); for (let i = 0; i < 18; i++) { const x = (i * 61 + this.t * 9) % view.w, y = view.h - ((i * 37 + this.t * 25 * (1 + (i % 3))) % view.h); g.fillStyle = i % 2 ? '#ffb040' : '#ff6a2a'; g.fillRect(x, y, 1, 1); } }
     // lighting: real-world time of day outdoors (Settings → Day / night cycle)
-    const phase = !inside && G.settings.daynight !== false ? dayPhase() : { dark: 0 };
+    const blackout = m.blackout !== undefined && !G.save.flags['mob' + m.blackout];
+    let phase = !inside && G.settings.daynight !== false ? dayPhase() : { dark: 0 };
+    if (m.dark || blackout) phase = { ...phase, dark: Math.max(phase.dark || 0, m.crypt ? 0.78 : 0.86) };
     const lights = [];
     if (phase.dark > 0.01) {
       for (const p of this.lp) lights.push({ x: p.px - cx + 8, y: p.py - cy + 4, r: 56 });
@@ -241,8 +244,11 @@ export class World {
     drawLighting(g, view.w, view.h, phase, lights);
     if (input.runLock.some((v, i) => v && i < this.lp.length)) { g.font = '8px "Press Start 2P"'; g.textAlign = 'right'; const tx = 'RUN ON'; const w = g.measureText(tx).width + 8; g.fillStyle = 'rgba(20,16,28,0.8)'; g.fillRect(view.w - w - 4, view.h - 16, w, 12); g.fillStyle = '#ffd23f'; g.fillText(tx, view.w - 8, view.h - 7); }
   }
+  questTick(k, v) { G.story?.tick?.(k, v); }
+  boarding(p) { return p && p.i === 0 && G.save.flags.longboard && G.save.flags.boardOn && this.map && this.map.kind !== 'interior' && !p.surf; }
   drawPerson(g, sheet, x, y, dir, f, tag, col, p) {
     x = Math.round(x); y = Math.round(y); if (p && p.surf) { y -= 9; f = 0; }
+    if (this.boarding(p)) { const side = dir === 'left' || dir === 'right'; g.fillStyle = '#14101c'; if (side) { g.fillRect(x - 1, y + 12, 18, 4); g.fillStyle = '#ff4fd8'; g.fillRect(x, y + 12, 16, 2); g.fillStyle = '#ffd23f'; g.fillRect(x + 2, y + 15, 2, 2); g.fillRect(x + 12, y + 15, 2, 2); } else { g.fillRect(x + 3, y + 6, 10, 12); g.fillStyle = '#ff4fd8'; g.fillRect(x + 4, y + 7, 8, 10); g.fillStyle = '#ffd23f'; g.fillRect(x + 4, y + 7, 2, 2); g.fillRect(x + 10, y + 15, 2, 2); } y -= 3; f = 0; }
     if (!(p && p.surf)) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x + 3, y + 13, 10, 3); }
     g.drawImage(sheet, f * 16, DIR_ROW[dir] * 20, 16, 20, x, y - 6, 16, 20);
     if (p && this.map.get(p.x, p.y) === T.TALL && !p.moving) { const atlas = tileAtlas(this.map.biome, Math.floor(this.t * 2) % 2); g.drawImage(atlas, T.TALL * TS, 8, TS, 8, x, y + 8, TS, 8); }
@@ -262,6 +268,8 @@ export class World {
       g.fillStyle = '#5a5070'; g.fillRect(cx - 10, by - 2, 20, 5); g.fillStyle = '#8a80a8'; g.fillRect(cx - 9, by - 2, 18, 2);
       g.drawImage(img, cx - 16, by - 34 + bob, 32, 32); return; }
     if (o.kind === 'ride') { drawObject(g, 'ride_' + o.ride, Math.round(x), Math.round(y), this.t); return; }
+    if (o.kind === 'deco') { drawObject(g, 'deco_' + o.art, Math.round(x), Math.round(y), this.t, o); return; }
+    if (o.kind === 'switch') { drawObject(g, G.save.flags[`sw${o.ci}_${o.sw}`] ? 'switch_on' : 'switch_off', Math.round(x), Math.round(y), this.t); return; }
     drawObject(g, o.kind === 'rift' && (G.save.echoes || []).some((e) => e.due <= Date.now()) ? 'riftdue' : o.kind, Math.round(x), Math.round(y), this.t);
     if (o.kind === 'station') { g.fillStyle = '#ffd23f'; g.font = '8px "Press Start 2P"'; g.textAlign = 'center'; g.fillText({ match: '≡', sequence: '#', speed: '!' }[o.game], Math.round(x) + 8, Math.round(y) - 1 + Math.sin(this.t * 3) * 1.5); }
   }
