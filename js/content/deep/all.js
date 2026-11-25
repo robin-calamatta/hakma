@@ -22,4 +22,5 @@ import './security.js';
 import './trading.js';
 import './systemdesign.js';
 import './engmanager.js';
+import './engmanager-interview.js';
 export { DEEP, DEEP_META } from './index.js';

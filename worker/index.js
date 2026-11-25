@@ -17,7 +17,9 @@ const SCHEMA = [
 ];
 let ready = null;
 function init(env) {
-  if (!ready) ready = env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((e) => { ready = null; throw e; });
+  if (!ready) ready = env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)))
+    .then(() => env.DB.prepare('ALTER TABLE users ADD COLUMN last_seen INTEGER').run().catch(() => {})) // added later; ignore "duplicate column"
+    .catch((e) => { ready = null; throw e; });
   return ready;
 }
 
@@ -33,7 +35,9 @@ function same(a, b) { if (a.length !== b.length) return false; let d = 0; for (l
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const bad = (msg, status = 400) => { throw new HttpError(status, msg); };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
-const pub = (u) => ({ id: u.id, username: u.username, email: u.email, friend_code: '', admin: false, must_change_password: false, created_at: u.created_at });
+// Admin accounts come from the ADMIN_EMAILS variable (comma-separated), set in the Cloudflare dashboard — never hard-coded here.
+const isAdmin = (env, u) => !!u && String(env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(String(u.email || '').toLowerCase());
+const pub = (u, env) => ({ id: u.id, username: u.username, email: u.email, friend_code: '', admin: isAdmin(env, u), must_change_password: false, created_at: u.created_at });
 
 async function body(req) { try { const t = await req.text(); if (t.length > MAX_SAVE_BYTES + 10_000) bad('Too large', 413); return t ? JSON.parse(t) : {}; } catch (e) { if (e instanceof HttpError) throw e; bad('Bad JSON'); } }
 
@@ -52,6 +56,7 @@ async function auth(env, req) {
   const row = await env.DB.prepare('SELECT u.*, t.last_used FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.hash = ?').bind(th).first();
   if (!row || row.last_used < now() - TOKEN_DAYS * 864e5) bad('Session expired — please log in again', 401);
   if (now() - row.last_used > 3600e3) await env.DB.prepare('UPDATE tokens SET last_used = ? WHERE hash = ?').bind(now(), th).run();
+  if (!(row.last_seen > now() - 120e3)) await env.DB.prepare('UPDATE users SET last_seen = ? WHERE id = ?').bind(now(), row.id).run().catch(() => {}); // "last active" for the admin list
   return { user: row, th };
 }
 
@@ -74,7 +79,7 @@ async function api(req, env, url) {
     const salt = randHex(16); const pass = await hashPw(password, salt); const t = now();
     const r = await env.DB.prepare('INSERT INTO users (username, email, pass, salt, created_at, last_login, terms_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(username, email, pass, salt, t, t, t).run();
     const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(r.meta.last_row_id).first();
-    return json({ token: await issueToken(env, user.id), user: pub(user) });
+    return json({ token: await issueToken(env, user.id), user: pub(user, env) });
   }
   if (p === '/api/login' && m === 'POST') {
     const b = await body(req); const login = String(b.login || '').trim(), password = String(b.password || '');
@@ -87,12 +92,21 @@ async function api(req, env, url) {
       bad('Wrong username/email or password', 401);
     }
     await env.DB.prepare('UPDATE users SET failed = 0, locked_until = 0, last_login = ? WHERE id = ?').bind(now(), user.id).run();
-    return json({ token: await issueToken(env, user.id), user: pub(user) });
+    return json({ token: await issueToken(env, user.id), user: pub(user, env) });
   }
 
   const { user, th } = await auth(env, req);
   if (p === '/api/logout' && m === 'POST') { await env.DB.prepare('DELETE FROM tokens WHERE hash = ?').bind(th).run(); return json({ ok: true }); }
-  if (p === '/api/me' && m === 'GET') return json({ user: pub(user) });
+  if (p === '/api/me' && m === 'GET') return json({ user: pub(user, env) });
+  if (p === '/api/admin/active' && m === 'GET') { // admin only: every account and when it was last active
+    if (!isAdmin(env, user)) bad('Admins only', 403);
+    const rows = (await env.DB.prepare(`SELECT u.id, u.username, u.email, u.created_at, u.last_login, u.last_seen,
+        (SELECT MAX(last_used) FROM tokens WHERE user_id = u.id) AS tok, (SELECT MAX(updated_at) FROM saves WHERE user_id = u.id) AS sv,
+        (SELECT COUNT(*) FROM saves WHERE user_id = u.id) AS nsaves, (SELECT GROUP_CONCAT(topic) FROM saves WHERE user_id = u.id) AS topics FROM users u`).all()).results;
+    const accounts = rows.map((r) => ({ username: r.username, email: r.email, created_at: r.created_at, last_active: Math.max(r.last_seen || 0, r.tok || 0, r.sv || 0, r.last_login || 0) || null, saves: r.nsaves, topics: [...new Set(String(r.topics || '').split(',').filter(Boolean))] }))
+      .sort((a, b) => (b.last_active || 0) - (a.last_active || 0));
+    return json({ now: now(), accounts });
+  }
   if (p === '/api/me' && m === 'DELETE') {
     await env.DB.batch(['DELETE FROM saves WHERE user_id = ?', 'DELETE FROM tokens WHERE user_id = ?', 'DELETE FROM users WHERE id = ?'].map((s) => env.DB.prepare(s).bind(user.id)));
     return json({ ok: true });

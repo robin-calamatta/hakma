@@ -6,6 +6,9 @@ import { esc, shuffle, R, sleep, clamp } from '../core/rng.js';
 import { levelFor, LEVEL_NAME, vocabQ } from './content.js';
 import { speak, canSpeak } from '../core/speech.js';
 import * as puzzles from './puzzles.js';
+import { CHAPTER_LINKS } from '../content/chapterlinks.js';
+import { openLink } from '../content/resources.js';
+import { CONFIG } from '../config.js';
 
 const S = () => G.save, W = () => G.W;
 const isLang = (ci) => !!(W().cities[ci].vocab?.length);
@@ -49,10 +52,11 @@ export async function lessonBoard(ci) {
 }
 export async function readLesson(ci, i) {
   const c = W().cities[ci]; const ls = lessonsFor(ci); const [title, body] = ls[i]; const s = S(); s.read = s.read || {}; let check = false;
-  const lang = W().meta?.speech;
+  const lang = W().meta?.speech; const guides = CONFIG.EXTERNAL_LINKS === false ? [] : (CHAPTER_LINKS[W().id]?.[ci] || []);
   await ui.panel({ title: `📖 ${esc(title)}`, wide: true, cls: 'lesson', render: () => `<div class="lessonbody">${fmt(esc(body))}</div>
+    ${guides.length ? `<p class="dim" style="margin:.6em 0 .2em">Further reading for this chapter:</p><div class="row lm-links">${guides.map(([n], k) => `<button data-nav data-act="guide" data-arg="${k}">📘 ${esc(n)}</button>`).join('')}</div>` : ''}
     <div class="row">${i > 0 ? '<button data-nav data-act="prev">◀ Previous</button>' : ''}<button data-nav data-act="check">✔ Quick check (3 questions)</button>${i < ls.length - 1 ? '<button data-nav data-act="next">Next ▶</button>' : ''}</div>`,
-    actions: { check: () => { check = true; return 'close'; }, prev: () => { i--; check = 'nav'; return 'close'; }, next: () => { i++; check = 'nav'; return 'close'; } } });
+    actions: { guide: (k) => { const g = guides[+k]; if (g) { const m = g[1].match(/^https:\/\/(en|simple)\.wikipedia\.org\/wiki\/(.+)$/); openLink(m ? { name: g[0], wiki: m[1], title: decodeURIComponent(m[2]), url0: g[1] } : { name: g[0], url: g[1] }); } }, check: () => { check = true; return 'close'; }, prev: () => { i--; check = 'nav'; return 'close'; }, next: () => { i++; check = 'nav'; return 'close'; } } });
   if (!s.read[ci + ':' + i] && check !== 'nav') { s.read[ci + ':' + i] = 1; s.money += 40; ui.toast('📖 Lesson read · +¤40'); }
   if (check === 'nav') return readLesson(ci, i);
   if (!check) return;

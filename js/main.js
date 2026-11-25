@@ -16,6 +16,7 @@ import './game/events.js';
 import './game/learn.js';
 import './game/wardrobe.js';
 import { net, netui } from './game/net.js';
+import { showTitleBox, hideTitleBox, playersPanel, isAdmin } from './game/adminpanel.js';
 import { monsterCanvas, itemIcon } from './core/sprites.js';
 import { esc, R, hash } from './core/rng.js';
 import * as menus from './game/menus.js';
@@ -151,15 +152,18 @@ async function titleMenu() {
   const items = [];
   if (any) items.push(['continue', '▶ Continue']);
   items.push(['new', '✚ New Game']); if (any) items.push(['manage', '🗂 Manage saves']); if (CONFIG.ONLINE) items.push(['online', net.authed ? `👥 Online: ${esc(net.user.username)}` : '👥 Log in / Create account']); else if (CONFIG.CLOUD_SAVES) items.push(['online', net.authed ? `☁ Account: ${esc(net.user.username)}` : '☁ Log in / Create account']); items.push(['settings', '⚙ Settings'], ['help', '? Help & Legal']);
+  if (isAdmin()) items.push(['players', '📊 All players (admin)']);
   if (installEvt) items.push(['install', '⬇ Install app']);
   else if (/iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone) items.push(['ios', '⬇ Install on iPhone/iPad']);
+  showTitleBox();
   const c = await ui.choose(null, items.map(([, h]) => ({ html: h })), { cls: 'titlemenu', cancel: false });
   if (c < 0 || !G.title) return; // menu was replaced (e.g. the install option appeared)
-  const k = items[c][0];
+  const k = items[c][0]; hideTitleBox();
   if (k === 'continue') { const pick = await ui.choose('Choose a save', slots.map((s, i) => ({ html: slotLabel(s, i), disabled: !s })), { cls: 'slots' }); if (pick >= 0) return startGame(pick, readSlot(pick)); }
   if (k === 'new') return newGameFlow();
   if (k === 'manage') await manageSaves();
   if (k === 'online') await netui.friends();
+  if (k === 'players') await playersPanel();
   if (k === 'settings') await menus.settings();
   if (k === 'help') await menus.help();
   if (k === 'install' && installEvt) { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; }
@@ -179,6 +183,7 @@ async function newGameFlow() {
   startGame(slot, s);
 }
 function startGame(slot, save) {
+  hideTitleBox();
   save = migrate(save); G.slot = slot; G.save = save; G.title = false; G.busy = 0;
   setWorldSeed(save.seed); G.W = getWorld(save.topic || topics()[0].id); applyWorldTheme(G.W);
   input.setPlayers(save.players.length); save.players.forEach((_, i) => input.assignPad(i, i));
@@ -205,7 +210,7 @@ function frame(now) {
 }
 document.fonts?.load('8px "Press Start 2P"').finally(() => {
   document.getElementById('boot')?.remove();
-  G.title = true; G.scene = titleScene; audio.play('title', 'hakma-title', 'title'); titleMenu(); if (CONFIG.ONLINE || CONFIG.CLOUD_SAVES) { net.init(); fetch((CONFIG.SERVER_URL || '') + '/api/info').then((r) => r.json()).then((i) => { if (typeof i.externalLinks === 'boolean') CONFIG.EXTERNAL_LINKS = i.externalLinks; }).catch(() => {}); }
+  G.title = true; G.scene = titleScene; audio.play('title', 'hakma-title', 'title'); titleMenu(); if (CONFIG.ONLINE || CONFIG.CLOUD_SAVES) { net.init().then(() => { if (G.title && isAdmin()) titleMenu(); }); fetch((CONFIG.SERVER_URL || '') + '/api/info').then((r) => r.json()).then((i) => { if (typeof i.externalLinks === 'boolean') CONFIG.EXTERNAL_LINKS = i.externalLinks; }).catch(() => {}); }
   requestAnimationFrame(frame);
 });
 window.HAKMA = G; // handy for debugging from the console

@@ -280,3 +280,14 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 #hud.battle .enemyhuds .bhud { position: static; width: 100%; padding: 0.15em 0.45em; font-size: 0.82em; }
 #hud.battle .enemyhuds .tt { display: none; }
 .bhud .fdots { display: inline-flex; gap: 0.2em; margin-left: 0.4em; vertical-align: middle; } .bhud .fdots i { width: 0.55em; height: 0.55em; border-radius: 50%; background: var(--sel); border: 1px solid #000; } .bhud .fdots i.out { background: #555; }
+
+/* admin: player activity on the title screen */
+.adminbox { position: fixed; top: 10px; right: 10px; z-index: 40; max-width: min(340px, 44vw); max-height: 46vh; overflow: auto; background: rgba(18,12,40,.88); border: 2px solid #4cf0ff; border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 13px; }
+.adminbox .adminrows { margin-top: 6px; display: grid; gap: 3px; }
+.adminrow { display: grid; grid-template-columns: 12px 1fr auto; gap: 6px; align-items: center; }
+.adminbox .dot, .admintable .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #666; margin-right: 4px; }
+.adminbox .dot.on, .admintable .dot.on { background: #3ddc84; box-shadow: 0 0 6px #3ddc84; }
+.admintable { display: grid; gap: 4px; max-height: 60vh; overflow: auto; margin: 8px 0; }
+.admintable .ath, .admintable .atr { display: grid; grid-template-columns: 2fr 1.4fr 1fr 1.6fr; gap: 8px; padding: 4px 6px; }
+.admintable .ath { font-weight: bold; border-bottom: 1px solid #4cf0ff66; }
+.admintable .atr:nth-child(odd) { background: rgba(255,255,255,.04); }

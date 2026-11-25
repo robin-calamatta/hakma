@@ -39,7 +39,7 @@ function related(T) {
 export async function learnMore(T) {
   if (!T) return;
   const w = W(); const sp = Object.values(w.species).find((s) => s.termId === T.id && s.stage === 0) || Object.values(w.species).find((s) => s.termId === T.id);
-  const links = externalOn() ? resourceLinks(w.id, T.term) : [];
+  const links = externalOn() ? resourceLinks(w.id, T.term, T.ci) : []; const tl = links.map((l, i) => [l, i]).filter(([l]) => l.kind !== 'chapter'), cl = links.map((l, i) => [l, i]).filter(([l]) => l.kind === 'chapter');
   const rel = related(T); const city = w.cities[T.ci];
   let img = ''; try { if (sp) img = monsterDataURL(sp); } catch {}
   await ui.panel({ title: '📖 ' + esc(T.term), wide: true, cls: 'learnp',
@@ -49,7 +49,8 @@ export async function learnMore(T) {
       ${T.ex && T.ex.length ? `<h3>Examples</h3><ol class="lm-ex">${T.ex.map((e) => `<li>${fmt(esc(e))}</li>`).join('')}</ol>` : ''}
       ${rel.length ? `<h3>Worked questions</h3>${rel.map((Q) => `<div class="term qa"><b>Q: ${esc(Q.q)}</b><span>A: ${esc(Q.a)} — <i>${esc(Q.expl)}</i></span></div>`).join('')}` : ''}
       ${sp ? `<h3>Embodied by</h3><div class="lm-mon">${img ? `<img src="${img}" alt="">` : ''}<span><b>${esc(sp.name)}</b> · ${esc(sp.type)} type<br><span class="dim">Catch it to keep this idea close.</span></span></div>` : ''}
-      ${links.length ? `<h3>Go deeper (opens your browser)</h3><div class="row lm-links">${links.map((l, i) => `<button data-nav data-act="open" data-arg="${i}">🔗 ${esc(l.name)}</button>`).join('')}</div>` : ''}
+      ${tl.length ? `<h3>Look it up (opens your browser)</h3><div class="row lm-links">${tl.map(([l, i]) => `<button data-nav data-act="open" data-arg="${i}">🔗 ${esc(l.name)}</button>`).join('')}</div>` : ''}
+      ${cl.length ? `<h3>Best guides for this chapter</h3><div class="row lm-links">${cl.map(([l, i]) => `<button data-nav data-act="open" data-arg="${i}">📘 ${esc(l.name)}</button>`).join('')}</div>` : ''}
       <div class="row"><button data-nav data-act="__close">Done</button></div></div>`,
     actions: { open: (i) => { const l = links[+i]; if (l && externalOn()) openLink(l); } } });
 }

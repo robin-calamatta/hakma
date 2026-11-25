@@ -120,7 +120,7 @@ export const netui = {
         <h4>Account</h4>
         <div class="row">${field('pw_cur', 'Current password', 'password')}${field('pw_new', 'New password (8+)', 'password')}<button data-nav data-act="pw">Change password</button></div>
         <div class="row"><button data-nav data-act="export">Download my data</button><button data-nav data-act="delacct">Delete my account</button></div>`;
-      return `<div class="me"><b>${esc(u.username)}</b> <span class="dot ${net.online ? 'on' : ''}"></span> ${net.online ? 'Online' : 'Connecting…'} · Friend code <code>${esc(u.friend_code)}</code> ${u.admin ? '<a class="btn" data-nav href="admin.html" target="_blank">Admin</a>' : ''} <button data-nav data-act="logout">Log out</button></div>${e}
+      return `<div class="me"><b>${esc(u.username)}</b> <span class="dot ${net.online ? 'on' : ''}"></span> ${net.online ? 'Online' : 'Connecting…'} · Friend code <code>${esc(u.friend_code)}</code> ${u.admin && !cloud ? '<a class="btn" data-nav href="admin.html" target="_blank">Admin</a>' : ''} <button data-nav data-act="logout">Log out</button></div>${e}
         <div class="row">${field('add', 'Add friend by username or code')}<button data-nav data-act="add">Send request</button></div>
         ${net.requests.length ? `<h4>Requests</h4>${net.requests.map((r) => `<div class="frow"><b>${esc(r.username)}</b><button data-nav data-act="acc" data-arg="${r.id}">Accept</button><button data-nav data-act="dec" data-arg="${r.id}">Decline</button></div>`).join('')}` : ''}
         ${net.pendingInvite ? `<div class="frow inv">👥 <b>${esc(net.pendingInvite.name)}</b> invited you to a party. <button data-nav data-act="join" data-arg="${net.pendingInvite.party}">Join</button></div>` : ''}

@@ -2,7 +2,7 @@
 // Software Development Manager: from first-time manager to leading teams of teams.
 export default {
   id: 'engmanager', name: 'Software Development Manager', cat: 'tech', icon: '🧭', level: 'New manager → senior engineering leader',
-  blurb: 'The move from engineer to manager, 1:1s, hiring, feedback and coaching, performance, delivery and metrics, team health, stakeholders, and engineering strategy.',
+  blurb: 'Interview-ready: the EM interview loop with model answers, roadmaps and quarterly planning, budgets, senior stakeholders and performance problems — plus the move from engineer to manager, 1:1s, hiring, feedback and coaching, performance, delivery and metrics, team health, stakeholders, and engineering strategy.',
   region: 'Leadership Region', prof: 'Professor Mentor',
   cities: [
     { name: 'Onewayton', theme: 'Engineer to Manager', leader: 'Maven', badge: 'First Step Badge', type: 'logic',
