@@ -7,11 +7,15 @@
   "assets": {
     "directory": "./",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"],
+    "run_worker_first": ["/api/*", "/.well-known/*"],
     "not_found_handling": "single-page-application"
   },
   "d1_databases": [{ "binding": "DB", "database_name": "hakma-db" }],
+  // keep variables added in the Cloudflare dashboard (e.g. ANDROID_SHA256) when deploying from git
+  "keep_vars": true,
   "vars": {
+    // Google Play package name of the Android app
+    "ANDROID_PACKAGE": "com.robincalamatta.hakma",
     // set to "false" to stop new sign-ups
     "ALLOW_REGISTRATION": "true",
     // set to "false" to hide "Learn more" outside links for everyone

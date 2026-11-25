@@ -393,7 +393,7 @@ async function previewChoose(sp, text) {
 
 // Subject picker is two steps: pick a category, then a subject inside it (grouped so the list stays short).
 const TOPIC_GROUPS = [
-  { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, system design, cloud, DevOps and certifications.', sections: [['Programming', ['cs', 'python', 'java', 'golang', 'softeng']], ['Architecture', ['systemdesign']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
+  { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, system design, engineering management, cloud, DevOps and certifications.', sections: [['Programming', ['cs', 'python', 'java', 'golang', 'softeng']], ['Architecture', ['systemdesign']], ['Leadership', ['engmanager']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
   { id: 'lang', icon: '🌍', name: 'World Languages', blurb: 'Learn to speak French, Spanish or Maltese.', sections: [['Languages', ['french', 'spanish', 'maltese']]] },
   { id: 'elec', icon: '🔧', name: 'Trades & Engineering', blurb: 'Circuits, the electrician trade, and cars & engines.', sections: [['Electrical', ['electrical', 'electrician']], ['Automotive', ['automotive']]] },
   { id: 'sec', icon: '🛡', name: 'Cyber Security & Networking', blurb: 'How networks work, how to defend them, and ethical hacking.', sections: [['Security & Networks', ['networking', 'cybersec', 'hacking']]] },

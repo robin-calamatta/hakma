@@ -274,3 +274,5 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 .bcell { display: flex; flex-direction: column; align-items: center; gap: 0.15em; padding: 0.35em 0.2em; font-size: 0.78em; text-align: center; }
 .bcell .mini { width: 2.4em; height: 2.4em; } .bcell .bn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; } .bcell .bl { font-size: 0.85em; opacity: 0.85; } .bcell .type { font-style: normal; font-size: 0.9em; padding: 0 0.3em; }
 .lessonlist { min-width: 46%; } .lessonlist button { display: block; text-align: left; width: 100%; }
+.arcade .kb { display: flex; flex-direction: column; align-items: center; gap: 6px; } .arcade .kbrow { display: flex; gap: 5px; justify-content: center; width: 100%; max-width: 480px; } .arcade .kbrow button { flex: 1 1 0; min-width: 0; max-width: 44px; min-height: 40px; padding: 0; font-size: 15px; } .arcade .kbrow button.used { opacity: .3; }
+.arcade .kbrow button { text-align: center; justify-content: center; } .arcade .kbrow button.sel::before { content: none; }

@@ -59,7 +59,7 @@ async function api(req, env, url) {
   await init(env);
   const p = url.pathname, m = req.method;
   if (p === '/api/health') return json({ ok: true, name: 'hakma-cloud', time: now() });
-  if (p === '/api/info' && m === 'GET') return json({ cloud: true, online: false, allowRegistration: env.ALLOW_REGISTRATION !== 'false', externalLinks: env.EXTERNAL_LINKS !== 'false', operatorName: env.OPERATOR_NAME || undefined });
+  if (p === '/api/info' && m === 'GET') return json({ cloud: true, online: false, allowRegistration: env.ALLOW_REGISTRATION !== 'false', externalLinks: env.EXTERNAL_LINKS !== 'false', operatorName: env.OPERATOR_NAME || undefined, contactEmail: env.CONTACT_EMAIL || undefined });
 
   if (p === '/api/register' && m === 'POST') {
     if (env.ALLOW_REGISTRATION === 'false') bad('New accounts are currently closed.', 403);
@@ -135,6 +135,13 @@ async function api(req, env, url) {
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    // Digital Asset Links for the Android (Trusted Web Activity) app. Fingerprints come from the Cloudflare
+    // dashboard variable ANDROID_SHA256 (comma-separated) so they survive every git deploy.
+    if (url.pathname === '/.well-known/assetlinks.json') {
+      const fps = String(env.ANDROID_SHA256 || '').split(/[\s,]+/).map((f) => f.trim().toUpperCase()).filter((f) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(f));
+      const body = fps.length ? [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: env.ANDROID_PACKAGE || 'com.robincalamatta.hakma', sha256_cert_fingerprints: fps } }] : [];
+      return new Response(JSON.stringify(body, null, 2), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*' } });
+    }
     if (url.pathname.startsWith('/api/')) {
       if (!env.DB) return json({ error: 'Cloud saves are not set up on this server yet.' }, 503);
       try { return await api(req, env, url); }

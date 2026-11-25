@@ -104,7 +104,7 @@ async function unscramble(ci) {
   for (let n = 0; n < list.length; n++) {
     const it = list[n]; const target = letters(it.word).toUpperCase(); let tiles = shuffle(target.split('').map((ch, i) => ({ ch, i }))); if (tiles.map((t) => t.ch).join('') === target && target.length > 1) tiles = tiles.reverse();
     let picked = []; let result = null;
-    await ui.panel({ title: `Unscramble ${n + 1}/${list.length} · Score ${score}`, wide: true, cls: 'arcade', render: () => `<p class="clue">${fmt(esc(it.clue))}</p>
+    await ui.panel({ title: `Unscramble ${n + 1}/${list.length} · Score ${score}`, wide: true, cls: 'arcade', spatial: true, render: () => `<p class="clue">${fmt(esc(it.clue))}</p>
       <div class="slots">${target.split('').map((_, i) => `<span class="slot">${picked[i] ? esc(picked[i].ch) : '_'}</span>`).join('')}</div>
       <div class="tiles">${tiles.map((t, k) => `<button data-nav data-act="t" data-arg="${k}" ${picked.includes(t) ? 'disabled class="used"' : ''}>${esc(t.ch)}</button>`).join('')}</div>
       <div class="row"><button data-nav data-act="back">⌫ Undo</button><button data-nav data-act="skip">Give up</button></div>`,
@@ -139,12 +139,12 @@ async function guess(ci) {
   let score = 0;
   for (let n = 0; n < list.length; n++) {
     const it = list[n]; const word = it.word.toUpperCase(); const need = new Set(letters(word).split(''));
-    const base = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''); const keys = [...new Set([...base, ...need])];
+    const kbRows = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'].map((r2) => r2.split('')); const extra = [...need].filter((ch) => !kbRows.flat().includes(ch)); if (extra.length) kbRows.push(extra);
     const got = new Set(); let miss = 0, done = null;
-    await ui.panel({ title: `Word Guess ${n + 1}/${list.length} · Score ${score}`, wide: true, cls: 'arcade', render: () => `<p class="clue">${fmt(esc(it.clue))}</p>
+    await ui.panel({ title: `Word Guess ${n + 1}/${list.length} · Score ${score}`, wide: true, cls: 'arcade', spatial: true, render: () => `<p class="clue">${fmt(esc(it.clue))}</p>
       <div class="slots">${word.split('').map((ch) => (letters(ch) ? `<span class="slot">${got.has(ch) || done !== null ? esc(ch) : '_'}</span>` : `<span class="gap">${esc(ch)}</span>`)).join('')}</div>
       <p class="lives">${'❤'.repeat(6 - miss)}${'♡'.repeat(miss)}</p>
-      <div class="tiles keys">${keys.map((k) => `<button data-nav data-act="k" data-arg="${k}" ${got.has(k) || done !== null ? 'disabled class="used"' : ''}>${k}</button>`).join('')}</div>`,
+      <div class="kb">${kbRows.map((row) => `<div class="kbrow">${row.map((k) => `<button data-nav data-act="k" data-arg="${k}" ${got.has(k) || done !== null ? 'disabled class="used"' : ''}>${k}</button>`).join('')}</div>`).join('')}</div>`,
       actions: { k: async (k) => {
         if (got.has(k)) return; got.add(k);
         if (need.has(k)) audio.sfx('correct'); else { miss++; audio.sfx('wrong'); }
