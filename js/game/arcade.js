@@ -43,7 +43,7 @@ export async function lessonBoard(ci) {
   const c = W().cities[ci]; const ls = lessonsFor(ci); const s = S(); s.read = s.read || {};
   for (;;) {
     const lvl = levelFor(s, ci);
-    const pick = await ui.choose(`${c.name} Academy — ${c.theme} · Your level: ${LEVEL_NAME[lvl]}`, ls.map(([t], i) => ({ html: `${s.read[ci + ':' + i] ? '✔' : '📖'} Lesson ${i + 1}: ${esc(t)}` })), { cls: 'teamlist' });
+    const pick = await ui.choose(`${c.name} Academy — ${c.theme} · Your level: ${LEVEL_NAME[lvl]}`, ls.map(([t], i) => ({ html: `${s.read[ci + ':' + i] ? '✔' : '📖'} Lesson ${i + 1}: ${esc(t)}` })), { cls: 'lessonlist' });
     if (pick < 0) return; await readLesson(ci, pick);
   }
 }

@@ -7,13 +7,13 @@ import { G, ITEMS, stats, maxHp, movesOf, monName, xpToNext, gainXp, healMon, ne
 import { ui, fmt } from './ui.js';
 import { audio } from '../core/audio.js';
 import { input } from '../core/input.js';
-import { esc, clamp, R, sleep } from '../core/rng.js';
+import { esc, clamp, R, sleep, uid } from '../core/rng.js';
 import { TYPES, beats, weakTo, typeCycleText } from '../content/types.js';
 import { questList, objective } from './events.js';
 import { monRow, evolveScene } from './battle.js';
 import { checkEvolve, evolve, FIELD_SKILLS, tmMove, BOX_COUNT, BOX_SIZE } from './state.js';
 import { BIOMES } from '../core/sprites.js';
-import { biomeOf, worldSeed, getMap, routeLayout, LAIR_ROUTE, zoneInfo , LINKS } from './maps.js';
+import { biomeOf, worldSeed, getMap, routeLayout, LAIR_ROUTE, zoneInfo, LINKS, seaZone, linksFor } from './maps.js';
 import { learnMore, externalOn } from './learn.js';
 import { hash, rng } from '../core/rng.js';
 import { itemIcon } from '../core/sprites.js';
@@ -98,12 +98,12 @@ function routePoints(nodes, r) {
 }
 // loop trails bulge out to the side of the chain between the two towns they join
 function linkPoints(nodes, k) {
-  const L = LINKS[k]; const nd = (id) => nodes.find((n) => n.id === id); const a = nd(L.a), b = nd(L.b); const east = L.aSide === 'east';
+  const L = linksFor()[k]; const nd = (id) => nodes.find((n) => n.id === id); const a = nd(L.a), b = nd(L.b); const east = L.aSide === 'east';
   const cxp = 2 * (east ? MAPW - 30 : 30) - (a.x + b.x) / 2; const pts = [];
   for (let i = 0; i <= 24; i++) { const t = i / 24, u = 1 - t; pts.push([u * u * a.x + 2 * u * t * cxp + t * t * b.x, u * u * a.y + 2 * u * t * ((a.y + b.y) / 2) + t * t * b.y]); }
   return pts;
 }
-function seaSpot(nodes) { const [, zy] = along(routePoints(nodes, 3), ZONE_F); const c3 = nodes.find((n) => n.id === 'city3'); return [MAPW - 40, (zy + c3.y) / 2 + 8]; }
+function seaSpot(nodes) { const r = seaZone(); const [, zy] = along(routePoints(nodes, r), ZONE_F); return [MAPW - 40, zy - 30]; }
 const along = (pts, f) => { const i = Math.min(pts.length - 1, Math.max(0, Math.round(f * (pts.length - 1)))); return pts[i]; };
 function secretsOnMap(nodes) {
   const w = W(); const out = [];
@@ -132,7 +132,7 @@ function drawRegion(cv) {
   g.fillStyle = '#17466b'; g.fillRect(0, 0, MAPW, MAPH);
   for (let i = 0; i < 340; i++) { const x = rr() * MAPW, y = rr() * MAPH; g.fillStyle = `rgba(160,210,240,${0.08 + rr() * 0.12})`; g.fillRect(x, y, 3 + rr() * 4, 1); }
   // island outline that hugs the whole chain of towns and roads
-  const allPts = []; for (let r = 1; r <= 9; r++) allPts.push(...routePoints(nodes, r)); for (let k = 0; k < LINKS.length; k++) allPts.push(...linkPoints(nodes, k));
+  const allPts = []; for (let r = 1; r <= 9; r++) allPts.push(...routePoints(nodes, r)); for (let k = 0; k < linksFor().length; k++) allPts.push(...linkPoints(nodes, k));
   const left = [], right = []; for (let y = 10; y <= MAPH - 8; y += 10) { const near = allPts.filter((p) => Math.abs(p[1] - y) < 40); const xs = near.length ? near.map((p) => p[0]) : [180]; const n1 = Math.sin(y * 0.05) * 8 + Math.sin(y * 0.13 + 1) * 5; left.push([Math.max(8, Math.min(...xs) - 70 + n1), y]); right.push([Math.min(MAPW - 8, Math.max(...xs) + 70 - n1), y]); }
   const land = new Path2D(); land.moveTo(left[0][0], left[0][1]); for (const p of left) land.lineTo(p[0], p[1]); for (const p of right.slice().reverse()) land.lineTo(p[0], p[1]); land.closePath();
   g.save(); g.strokeStyle = '#e8d49a'; g.lineWidth = 7; g.stroke(land); g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 12; g.globalAlpha = 0.4; g.stroke(land); g.restore();
@@ -150,7 +150,7 @@ function drawRegion(cv) {
     if (known) { g.setLineDash([3, 4]); g.strokeStyle = '#fff6d8'; g.lineWidth = 1; g.stroke(); g.setLineDash([]); }
     const [mx2, my2] = along(pts, 0.36); g.fillStyle = '#1b1530'; g.fillRect(mx2 - 9, my2 - 6, 18, 11); g.fillStyle = known ? '#ffd23f' : '#777'; g.font = '7px "Press Start 2P"'; g.textAlign = 'center'; g.fillText('R' + r, mx2, my2 + 3); }
   // loop trails, with the field skill each one needs
-  LINKS.forEach((L, k) => { const pts = linkPoints(nodes, k); const seen = s.flags['lvisit' + k]; const near = s.flags['visit' + (+L.b.slice(4))] || (L.a === 'hometown' ? true : s.flags['visit' + (+L.a.slice(4))]);
+  linksFor().forEach((L, k) => { const pts = linkPoints(nodes, k); const seen = s.flags['lvisit' + k]; const near = s.flags['visit' + (+L.b.slice(4))] || (L.a === 'hometown' ? true : s.flags['visit' + (+L.a.slice(4))]);
     if (!seen && !near) return;
     g.lineCap = 'round'; g.strokeStyle = '#3a2a1a'; g.lineWidth = 6; g.setLineDash(seen ? [] : [6, 5]); g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
     g.strokeStyle = seen ? '#d8b878' : '#8a7a62'; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
@@ -164,8 +164,8 @@ function drawRegion(cv) {
   // in-between zones sit on every road, just before the next town
   for (let r = 1; r <= 9; r++) { const Zi = zoneInfo(r); const [zx, zy] = along(routePoints(nodes, r), ZONE_F); const seenZ = s.flags['zvisit' + r];
     if (!seenZ && !routeKnown(r)) continue;
-    zoneIcon(g, Zi, zx, zy, !!seenZ); g.font = '6px "Press Start 2P"'; g.textAlign = zx < 180 ? 'right' : 'left'; const lx = zx < 180 ? zx - 13 : zx + 13; const nm2 = seenZ ? Zi.name : '???';
-    const tw = g.measureText(nm2).width; g.fillStyle = 'rgba(20,16,28,0.7)'; g.fillRect(zx < 180 ? lx - tw - 2 : lx - 2, zy - 6, tw + 4, 9); g.fillStyle = seenZ ? '#c8ffd8' : '#aaa'; g.fillText(nm2, lx, zy + 1); }
+    zoneIcon(g, Zi, zx, zy, !!seenZ); g.font = '6px "Press Start 2P"'; const nm2 = seenZ ? Zi.name : '???'; const tw = g.measureText(nm2).width; const onLeft = zx < 180 ? zx - 13 - tw > 4 : zx + 13 + tw > MAPW - 4; g.textAlign = onLeft ? 'right' : 'left'; const lx = onLeft ? zx - 13 : zx + 13;
+    g.fillStyle = 'rgba(20,16,28,0.7)'; g.fillRect(onLeft ? lx - tw - 2 : lx - 2, zy - 6, tw + 4, 9); g.fillStyle = seenZ ? '#c8ffd8' : '#aaa'; g.fillText(nm2, lx, zy + 1); }
   // hidden places: dotted trails + icons (shown once discovered, otherwise a faint "?")
   const secrets = secretsOnMap(nodes); let found = 0;
   for (const sc of secrets) { const f = !!s.flags['found_' + sc.id]; if (f) found++;
@@ -373,11 +373,11 @@ export async function settings() {
   };
   let cur = 0;
   await ui.panel({ title: 'Settings', onLR: (d, rr) => { const l = ui.stack[ui.stack.length - 1]; cur = l.idx; if (keys[cur]) change(keys[cur], d); rr(); },
-    render: () => `<div class="slist">${keys.map((k, i) => `<button data-nav data-act="t" data-arg="${k}" class="srow"><span>${lbl[k]}</span><b>◀ ${val(k)} ▶</b></button>`).join('')}${document.body.classList.contains('touch') ? '<button data-nav data-act="ctl" class="srow"><span>Touch controls</span><b>Move &amp; resize ▶</b></button>' : ''}</div><p class="dim">Left/right to change. Turn the timer off for a relaxed, accessible pace — you can still earn Quick Recall bonuses.</p>`,
-    actions: { t: (k) => change(k, 1), ctl: async () => { setTimeout(async () => { G.busy++; await editControls(); G.busy--; }, 50); return 'close'; } } });
+    render: () => `<div class="slist">${keys.map((k, i) => `<button data-nav data-act="t" data-arg="${k}" class="srow"><span>${lbl[k]}</span><b>◀ ${val(k)} ▶</b></button>`).join('')}${document.body.classList.contains('touch') ? '<button data-nav data-act="ctl" class="srow"><span>Touch controls</span><b>Move &amp; resize ▶</b></button>' : ''}<button data-nav data-act="reroll" class="srow"><span>🎲 New world layout</span><b>${S().seed === 'legacy' ? 'Classic map' : 'Shuffled'} ▶</b></button></div><p class="dim">Left/right to change. Turn the timer off for a relaxed, accessible pace — you can still earn Quick Recall bonuses.</p>`,
+    actions: { t: (k) => change(k, 1), reroll: async () => { if (!(await ui.confirm('Reshuffle this save\'s world? Routes, towns, building spots, in-between areas, loop trails, islands and which wild monsters live where all change. You keep your team, bag, badges and progress, and return to Origin Town.'))) return; const s = S(); s.seed = uid(); s.map = 'hometown'; s.pos = s.players.map(() => ({ x: 11, y: 10, dir: 'down' })); G.autosave(true); ui.toast('🎲 A brand-new world awaits…'); setTimeout(() => location.reload(), 900); return 'close'; }, ctl: async () => { setTimeout(async () => { G.busy++; await editControls(); G.busy--; }, 50); return 'close'; } } });
 }
 export async function help() {
-  await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p><h4>Rarity & secrets ★</h4><p>Monsters come in tiers: <b style="color:#b8c0cc">★ Common</b>, <b style="color:#5fd068">★★ Uncommon</b>, <b style="color:#4aa8ff">★★★ Rare</b>, <b style="color:#b36bff">★★★★ Epic</b>, plus four <b style="color:#ffb020">★★★★★ Legendary</b> guardians and one <b style="color:#ff5fd2">★★★★★★ Mythic</b> per world. Rarer monsters are stronger and harder to catch. Any monster can appear as a shimmering <b>✦ Prismatic</b> variant. Secret places — Hidden Groves, Secret Gardens behind each city\'s east hedge, Legendary Lairs behind gaps in the trees on Routes 3, 5, 7 and 9, and the Starfall Sanctum — have rarer encounters. Between every pair of towns lies a special area — Whispering Woods, the Hedge Maze, Mirror Lake, Echo Caverns, <b>Wonderland Park</b> (a theme-park town with a Ferris Wheel, Quiz Coaster, Carousel and Big Top), the Sunken Ruins, the Crystal Labyrinth, Mistwood and the Cloudwalk Bridges. The Region Map shows every town, road, area and discovered secret.</p><h4>Learning to mastery 🎓</h4><p>Every city starts at <b>Easy</b> questions, moves to <b>Medium</b> after 8 correct answers and <b>Mastery</b> after 24. Visit each city's <b>Academy</b> (Learning Quarter, east side) to read lessons, take level checks and the Mastery Exam. The <b>Arcade</b> next door has Unscramble, True/False Blitz, Word Guess, Quiz Ladder and Listening — also playable from the Codex. Language worlds include pronunciation (🔊) when your device has a voice for that language.</p><h4>Time travel ⏳</h4><p><b>Learning Echoes:</b> every question you miss comes back as an echo after 10 minutes, then 1, 3, 7 and 21 days. Battle echoes at an Echo Rift or from the ⏳ Chrono Log — answer all five steps to master it for good.<br><b>Chrono Gate:</b> with 4 badges, the gate in Origin Town opens trips to the past and future of your subject, with history questions and Ancient / Neo- era forms of monsters.<br><b>Real time:</b> the Keeper of Time gives a daily egg (hatches in ~2 hours) and buries time capsules (open after 3 days). Play daily to build your streak, and the Season Herald brings gifts each real season.</p>
+  await ui.panel({ title: 'Help & Legal', wide: true, render: () => `<div class="help"><h4>How to play</h4><p>Walk with the arrows/WASD (or the on-screen pad). Talk and interact with A. Open the menu with START. In battle choose a move, then answer its question: correct = hit, fast = ⚡ Quick Recall critical, wrong = miss + explanation. Weaken wild monsters and throw a Capture Cube, answering the lock-on question for a better catch rate.</p><h4>A new world every game 🎲</h4><p>Each new save rolls its own world: winding or zig-zag routes with forks and rivers, towns with buildings in different spots, the in-between areas in a new order, loop trails on different sides with different blockers, reshuffled islands, and different wild monsters, rarities and legends on every road. Older saves keep their classic map — change that under ⚙ Settings → 🎲 New world layout.</p><h4>Rarity & secrets ★</h4><p>Monsters come in tiers: <b style="color:#b8c0cc">★ Common</b>, <b style="color:#5fd068">★★ Uncommon</b>, <b style="color:#4aa8ff">★★★ Rare</b>, <b style="color:#b36bff">★★★★ Epic</b>, plus four <b style="color:#ffb020">★★★★★ Legendary</b> guardians and one <b style="color:#ff5fd2">★★★★★★ Mythic</b> per world. Rarer monsters are stronger and harder to catch. Any monster can appear as a shimmering <b>✦ Prismatic</b> variant. Secret places — Hidden Groves, Secret Gardens behind each city\'s east hedge, Legendary Lairs behind gaps in the trees on Routes 3, 5, 7 and 9, and the Starfall Sanctum — have rarer encounters. Between every pair of towns lies a special area — Whispering Woods, the Hedge Maze, Mirror Lake, Echo Caverns, <b>Wonderland Park</b> (a theme-park town with a Ferris Wheel, Quiz Coaster, Carousel and Big Top), the Sunken Ruins, the Crystal Labyrinth, Mistwood and the Cloudwalk Bridges. The Region Map shows every town, road, area and discovered secret.</p><h4>Learning to mastery 🎓</h4><p>Every city starts at <b>Easy</b> questions, moves to <b>Medium</b> after 8 correct answers and <b>Mastery</b> after 24. Visit each city's <b>Academy</b> (Learning Quarter, east side) to read lessons, take level checks and the Mastery Exam. The <b>Arcade</b> next door has Unscramble, True/False Blitz, Word Guess, Quiz Ladder and Listening — also playable from the Codex. Language worlds include pronunciation (🔊) when your device has a voice for that language.</p><h4>Time travel ⏳</h4><p><b>Learning Echoes:</b> every question you miss comes back as an echo after 10 minutes, then 1, 3, 7 and 21 days. Battle echoes at an Echo Rift or from the ⏳ Chrono Log — answer all five steps to master it for good.<br><b>Chrono Gate:</b> with 4 badges, the gate in Origin Town opens trips to the past and future of your subject, with history questions and Ancient / Neo- era forms of monsters.<br><b>Real time:</b> the Keeper of Time gives a daily egg (hatches in ~2 hours) and buries time capsules (open after 3 days). Play daily to build your streak, and the Season Herald brings gifts each real season.</p>
     <p>Each city teaches one chapter of your topic. Talk to everyone (tips go into your Codex), pass the Study Lab Trial, then beat the Mastery Hall Leader for a badge. Badges open the road north. Eight badges lead to the Mastery Summit.</p>
     <h4>Types</h4><p>${typeCycleText()}. Each type beats the next one. Super-effective hits do double damage.</p>
     <h4>Legal</h4><p>Hakma is an original work. All monsters, characters, music and art are generated by the game itself. Educational content is provided as-is for learning; always verify safety-critical information (e.g. electrical work) against official codes and licensed professionals.</p>

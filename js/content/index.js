@@ -21,8 +21,9 @@ import networking from './topics/networking.js';
 import cybersec from './topics/cybersec.js';
 import hacking from './topics/hacking.js';
 import trading from './topics/trading.js';
+import systemdesign from './topics/systemdesign.js';
 
 export const TOPICS = [
-  cs, kubernetes, python, java, softeng, devops, golang, terraform, networking, cybersec, hacking, electrical, electrician, automotive, finance, trading, french, spanish, maltese,
+  cs, kubernetes, python, java, softeng, systemdesign, devops, golang, terraform, networking, cybersec, hacking, electrical, electrician, automotive, finance, trading, french, spanish, maltese,
   mathElem, mathMiddle, mathHigh, elaElem, elaHigh, scienceElem, physics, chemistry, biology,
 ];

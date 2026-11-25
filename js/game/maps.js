@@ -1,8 +1,8 @@
 import { typeBeatsLines } from '../content/types.js';
 // Deterministic map generation: every topic gets its own region of 8 cities, 9 routes, gyms, interiors and a summit.
 import { rng, hash } from '../core/rng.js';
-import { T } from '../core/sprites.js';
-import { BIOME_ORDER } from './content.js';
+import { T, SOLID } from '../core/sprites.js';
+import { BIOME_ORDER, setContentSeed } from './content.js';
 import { eraSetFor } from '../content/eras.js';
 
 const CITY_MOOD = { meadow: 'town', coast: 'bright', forest: 'mystic', desert: 'bright', snow: 'calm', volcano: 'epic', crystal: 'cave', neon: 'neon' };
@@ -42,7 +42,7 @@ const npc = (x, y, o) => ({ x, y, kind: 'npc', dir: 'down', ...o });
 
 // ---- per-save world seed: every new game gets a different region layout. 'legacy' keeps pre-seed saves identical.
 let SEED = '';
-export function setWorldSeed(seed) { SEED = !seed || seed === 'legacy' ? '' : String(seed); }
+export function setWorldSeed(seed) { SEED = !seed || seed === 'legacy' ? '' : String(seed); setContentSeed(SEED); }
 export const worldSeed = () => SEED;
 function variant(W, key, n) { if (!SEED) return 0; return hash(W.id + SEED + 'var' + key) % n; }
 const CLEARABLE = new Set([T.CUTTREE, T.CRACKROCK]);
@@ -95,11 +95,12 @@ function hometown(W) {
   const M = variant(W, 'home', 2) === 1; const mx = (x, bw = 1) => (M ? w - x - bw : x);
   border(m, [11, 12], []);
   m.rect(11, 0, 2, 11, T.PATH); m.rect(3, 9, 18, 2, T.PATH);
-  const hd = building(m, mx(4, 5), 4, 5, 4, 'home', 'home_house'); m.set(hd.dx, hd.dy + 1, T.PATH);
+  const hy = SEED ? 3 + (hash(SEED + 'hy') % 2) : 4, hx = SEED ? 3 + (hash(SEED + 'hx') % 3) : 4, ly = SEED ? 2 + (hash(SEED + 'ly') % 2) : 3, lx = SEED ? 13 + (hash(SEED + 'lx') % 3) : 14;
+  const hd = building(m, mx(hx, 5), hy, 5, 4, 'home', 'home_house'); for (let y = hd.dy + 1; y < 9; y++) m.set(hd.dx, y, T.PATH);
   m.warps[m.warps.length - 1].tx = 4; m.warps[m.warps.length - 1].ty = 6;
-  const ld = building(m, mx(14, 7), 3, 7, 5, 'prof', 'lab'); m.set(ld.dx, ld.dy + 1, T.PATH);
+  const ld = building(m, mx(lx, 7), ly, 7, 5, 'prof', 'lab'); for (let y = ld.dy + 1; y < 9; y++) m.set(ld.dx, y, T.PATH);
   m.warps[m.warps.length - 1].tx = 5; m.warps[m.warps.length - 1].ty = 8;
-  m.rect(mx(15, 5), 13, 5, 3, T.WATER); m.rect(mx(14, 7), 12, 7, 1, T.FENCE);
+  { const pw = SEED ? 4 + (hash(SEED + 'pw') % 2) : 5, px0 = SEED ? 14 + (hash(SEED + 'px') % (21 - 14 - pw + 1)) : 15; m.rect(mx(px0, pw), 13, pw, 3, T.WATER); m.rect(mx(px0 - 1, pw + 2), 12, pw + 2, 1, T.FENCE); }
   for (let i = 0; i < 18; i++) { const x = r.int(2, w - 3), y = r.int(11, h - 3); if (m.get(x, y) === T.GRASS) m.set(x, y, r() < 0.6 ? T.FLOWER : T.TREE); }
   const sx = mx(13); m.set(sx, 11, T.SIGN); m.objs.push({ x: sx, y: 11, kind: 'sign', text: [`${HOMETOWN} — where every journey of learning begins.`, `North: Route 1 toward ${W.cities[0].name}.`] });
   m.set(mx(7), 12, T.GRASS); m.set(mx(17), 11, T.GRASS);
@@ -151,9 +152,10 @@ const routeCache = {};
 export function routeLayout(W, r) {
   const key = W.id + SEED + r; if (routeCache[key]) return routeCache[key];
   const w = 34, h = SEED ? 50 + 2 * rng(hash(W.id + SEED + 'rlen' + r)).int(0, 7) : 54, R = rng(hash(W.id + SEED + 'route' + r)); const px = new Array(h);
-  let cx = 10;
+  let cx = 10; const style = SEED ? hash(W.id + SEED + 'rstyle' + r) % 3 : 0;
+  const seg = [6, 4, 8][style], swing = [[-6, -5, -4, 4, 5, 6, -3, 3], [-3, -2, 2, 3, -4, 4], [-10, -8, -7, 7, 8, 10]][style];
   for (let y = h - 1; y >= 0; y--) {
-    if (y > 4 && y < h - 4 && (h - y) % 6 === 0) cx = Math.max(4, Math.min(26, cx + R.pick([-6, -5, -4, 4, 5, 6, -3, 3])));
+    if (y > 4 && y < h - 4 && (h - y) % seg === 0) cx = Math.max(4, Math.min(26, cx + R.pick(swing)));
     if (y <= 4) cx = 10; px[y] = cx;
   }
   return (routeCache[key] = { w, h, px, R });
@@ -166,11 +168,17 @@ function route(W, r) {
   let prev = px[h - 1];
   for (let y = h - 1; y >= 0; y--) { const cx = px[y]; const a = Math.min(cx, prev), b = Math.max(cx, prev); m.rect(a, y, b - a + 2, 1, T.PATH); prev = cx; }
   const onPath = (x, y) => x >= px[y] - 1 && x <= px[y] + 2;
+  // per-world route features: a forked detour and/or a river with a bridge
+  const feat = SEED ? hash(W.id + SEED + 'rfeat' + r) % 4 : 0; const dens = SEED ? 0.7 + (hash(W.id + SEED + 'rdens' + r) % 7) / 10 : 1;
+  if (feat === 1 || feat === 3) { const y2 = R.int(10, h - 22), y1 = y2 + R.int(8, 12); const off = px[y1] > w / 2 ? -R.int(6, 9) : R.int(6, 9); const fx = Math.max(3, Math.min(w - 5, px[y1] + off));
+    for (let y = y2; y <= y1; y++) m.rect(fx, y, 2, 1, T.PATH); for (const yy of [y1, y2]) { const a = Math.min(fx, px[yy]), b = Math.max(fx, px[yy]); m.rect(a, yy, b - a + 2, 1, T.PATH); } }
+  if (SEED && (feat === 2 || feat === 3)) { const cand = []; for (let y = Math.floor(h * 0.25); y < Math.floor(h * 0.75); y++) if ([y - 1, y, y + 1, y + 2].every((q) => px[q] === px[y]) && [y - 1, y, y + 1, y + 2].every((q) => m.get(px[y] - 1, q) !== T.PATH && m.get(px[y] + 2, q) !== T.PATH)) cand.push(y);
+    if (cand.length) { const ry = cand[R.int(0, cand.length - 1)]; for (const y of [ry, ry + 1]) for (let x = 1; x < w - 1; x++) m.set(x, y, x === px[y] || x === px[y] + 1 ? T.BRIDGE : T.WATER); m.riverY = ry; } }
   // tall grass patches
-  for (let i = 0; i < 16; i++) { const pw = R.int(3, 8), ph = R.int(3, 6), x0 = R.int(2, w - 2 - pw), y0 = R.int(4, h - 6 - ph); for (let y = y0; y < y0 + ph; y++) for (let x = x0; x < x0 + pw; x++) if (m.get(x, y) === T.GRASS || (m.get(x, y) === T.PATH && R() < 0.85)) m.set(x, y, T.TALL); }
+  for (let i = 0; i < Math.round(16 * dens); i++) { const pw = R.int(3, 8), ph = R.int(3, 6), x0 = R.int(2, w - 2 - pw), y0 = R.int(4, h - 6 - ph); for (let y = y0; y < y0 + ph; y++) for (let x = x0; x < x0 + pw; x++) if (m.get(x, y) === T.GRASS || (m.get(x, y) === T.PATH && R() < 0.85)) m.set(x, y, T.TALL); }
   // pond
   for (let k = 0; k < 3; k++) { const pw = R.int(3, 6), ph = R.int(2, 4), x0 = R.int(2, w - 2 - pw), y0 = R.int(6, h - 8 - ph); let ok = true; for (let y = y0 - 1; y < y0 + ph + 1; y++) for (let x = x0 - 1; x < x0 + pw + 1; x++) if (onPath(x, y)) ok = false; if (ok) m.rect(x0, y0, pw, ph, T.WATER); }
-  scatter(m, R, 85, [T.TREE, T.TREE, T.TREE, T.TREE, T.ROCK, T.FLOWER, T.FLOWER], (x, y) => onPath(x, y) || onPath(x - 1, y) || onPath(x + 1, y));
+  scatter(m, R, Math.round(85 * (2 - dens)), [T.TREE, T.TREE, T.TREE, T.TREE, T.ROCK, T.FLOWER, T.FLOWER], (x, y) => onPath(x, y) || onPath(x - 1, y) || onPath(x + 1, y) || m.get(x, y) !== T.GRASS);
   // trainers
   const lines = W.routeLines(r); const [, hi] = W.routeLevels(r);
   [0.86, 0.68, 0.5, 0.33, 0.16].forEach((f, k) => {
@@ -204,7 +212,7 @@ function route(W, r) {
   }
   // signpost
   m.set(px[h - 4] - 1, h - 4, T.SIGN);
-  m.objs.push({ x: px[h - 4] - 1, y: h - 4, kind: 'sign', text: [`Route ${r}`, toCity !== null ? `North: ${ZONES[r - 1].name}, then ${W.cities[toCity].name} — ${W.cities[toCity].theme}.` : `North: ${ZONES[r - 1].name}, then the Mastery Summit.`, 'Tall grass hides wild monsters. Lost notes on this route preview what\'s ahead!'] });
+  m.objs.push({ x: px[h - 4] - 1, y: h - 4, kind: 'sign', text: [`Route ${r}`, toCity !== null ? `North: ${zoneInfo(r).name}, then ${W.cities[toCity].name} — ${W.cities[toCity].theme}.` : `North: ${zoneInfo(r).name}, then the Mastery Summit.`, 'Tall grass hides wild monsters. Lost notes on this route preview what\'s ahead!'] });
   // ---- field-skill obstacles. Slice (from Leader 1) clears saplings; Smash (from Leader 3) breaks cracked boulders.
   // A wall only blocks the main road on routes you reach after earning that skill; pockets hide bonus items.
   const obst = [];
@@ -267,16 +275,20 @@ export const ZONES = [
   { kind: 'cave', name: 'Echo Caverns', icon: 'cave' }, { kind: 'park', name: 'Wonderland Park', icon: 'park' }, { kind: 'ruins', name: 'Sunken Ruins', icon: 'ruins' },
   { kind: 'maze', name: 'Crystal Labyrinth', icon: 'maze', crystal: true }, { kind: 'forest', name: 'Mistwood', icon: 'forest', night: true }, { kind: 'lake', name: 'Cloudwalk Bridges', icon: 'sky', sky: true },
 ];
-export const zoneInfo = (r) => ZONES[r - 1];
+// each new world shuffles which in-between area sits on which road (the sky bridges always lead to the summit)
+const zoneCache = {};
+export function zoneOrder() { if (!SEED) return ZONES; if (zoneCache[SEED]) return zoneCache[SEED]; const r = rng(hash(SEED + 'zones')); const a = ZONES.slice(0, 8); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return (zoneCache[SEED] = [...a, ZONES[8]]); }
+export const zoneInfo = (r) => zoneOrder()[r - 1];
+export const seaZone = () => 1 + zoneOrder().findIndex((z) => z.kind === 'lake' && !z.sky);
 const ZW = 30; // all zones: 30 wide; south entrance and north exit at x 14–15
-const zoneH = (r) => ({ forest: 44, maze: 39, lake: 40, cave: 42, park: 34, ruins: 40 })[ZONES[r - 1].kind];
+const zoneH = (r) => ({ forest: 44, maze: 39, lake: 40, cave: 42, park: 34, ruins: 40 })[zoneInfo(r).kind];
 function zoneExits(W, m, r) {
   const h = m.h; const north = r <= 8 ? [`city${r - 1}`, 14, 23] : ['summit', 6, 32];
   for (const x of [14, 15]) { m.warps.push({ x, y: h - 1, to: `route${r}`, tx: 10 + (x - 14), ty: 1, dir: 'down' }); m.warps.push({ x, y: 0, to: north[0], tx: north[1] + (x - 14), ty: north[2], dir: 'up' }); m.set(x, h - 1, T.PATH); m.set(x, 0, T.PATH); m.set(x, h - 2, T.PATH); m.set(x, 1, T.PATH); }
 }
 const carveWalk = (m, R, x0, y0, x1, y1, wdt, tile = T.PATH, wobble = 0.45) => { let x = x0, y = y0; while (y !== y1 || x !== x1) { for (let k = 0; k < wdt; k++) m.set(Math.max(2, Math.min(m.w - 3, x + k)), y, tile); if (y !== y1 && (R() > wobble || x === x1)) y += y1 > y ? 1 : -1; else { const tx = R() < 0.25 ? x + (R() < 0.5 ? -1 : 1) : x + Math.sign(x1 - x); x = Math.max(3, Math.min(m.w - 4, tx)); } } for (let k = 0; k < wdt; k++) m.set(x + k, y, tile); };
 function zone(W, r) {
-  const Z = ZONES[r - 1]; const h = zoneH(r), w = ZW; const R = rng(hash(W.id + SEED + 'zone' + r)); const ci = Math.min(r - 1, 7);
+  const Z = zoneInfo(r); const h = zoneH(r), w = ZW; const R = rng(hash(W.id + SEED + 'zone' + r)); const ci = Math.min(r - 1, 7);
   const biome = Z.crystal ? 'crystal' : Z.sky ? 'snow' : Z.kind === 'cave' ? 'crystal' : Z.kind === 'ruins' ? 'desert' : Z.kind === 'park' ? 'meadow' : Z.kind === 'lake' ? 'coast' : 'forest';
   let m; const lines = W.routeLines(r); const [, hi] = W.routeLevels(r);
   const trainer = (x, y, dir, k) => { const nm = W.trainerName(hash(W.id + SEED + 'z' + r + 't' + k)); const n = Math.min(1 + Math.floor((r + k) / 4), 3); m.set(x, y, m.get(x, y) === T.TALL ? T.GRASS : m.get(x, y)); m.objs.push({ x, y, kind: 'trainer', dir, sight: 3, key: `z${r}t${k}`, name: nm.name, cls: nm.cls, team: W.makeTeam(hash(W.id + SEED + 'z' + r + 'tm' + k), lines, n, hi + 1 - (n - 1)), money: (hi + 2) * 24, qci: ci }); };
@@ -301,8 +313,8 @@ function zone(W, r) {
     const [ex, ey] = C(7, chh - 1); for (let y = ey; y <= h - 3; y++) m.set(ex, y, T.PATH); const [tx, ty] = C(R.int(0, cw - 1), 0); for (let y = 1; y <= ty; y++) m.set(tx, y, T.PATH);
     for (let x = Math.min(ex, 14); x <= Math.max(ex, 15); x++) m.set(x, h - 3, T.PATH); for (let x = Math.min(tx, 14); x <= Math.max(tx, 15); x++) m.set(x, 1, T.PATH);
     const [mx0, my0] = C(6, Math.floor(chh / 2)); m.rect(mx0 - 1, my0 - 1, 5, 3, T.GRASS); m.set(mx0 + 1, my0 - 1, T.SIGN);
-    m.objs.push({ x: mx0 + 1, y: my0 - 1, kind: 'sign', text: [`${Z.name} — the centre!`, 'Dead ends often hide treasure. The exit is somewhere along the north wall.'] }); item(mx0 + 2, my0 + 1, 'cube3', 8);
-    m.objs.push(npc(mx0, my0 + 1, { name: 'Maze Keeper', tips: ['You found the heart of the maze! Few get this far.', ...tipLines(W, ci, 17, 2)], pal: { shirt: Z.crystal ? '#8a6aff' : '#3a8a3a', hat: '#d8b040' } }));
+    m.objs.push({ x: mx0 + 1, y: my0 - 1, kind: 'sign', text: [`${Z.name} — the centre!`, 'Dead ends often hide treasure. The exit is somewhere along the north wall.'] }); item(mx0 + 2, my0, 'cube3', 8);
+    m.objs.push(npc(mx0, my0, { name: 'Maze Keeper', tips: ['You found the heart of the maze! Few get this far.', ...tipLines(W, ci, 17, 2)], pal: { shirt: Z.crystal ? '#8a6aff' : '#3a8a3a', hat: '#d8b040' } }));
     const dead = []; for (let cy = 0; cy < chh; cy++) for (let cx = 0; cx < cw; cx++) { const [x, y] = C(cx, cy); if (m.get(x, y) !== T.PATH) continue; const n = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => m.get(x + dx, y + dy) === T.PATH).length; if (n === 1) dead.push([x, y]); }
     dead.sort(() => R() - 0.5).slice(0, 4).forEach(([x, y], k) => item(x, y, loot(), k)); dead.slice(4, 9).forEach(([x, y]) => m.set(x, y, T.TALL));
     for (let k = 0; k < 14; k++) { const [x, y] = C(R.int(0, cw - 1), R.int(0, chh - 1)); if (m.get(x, y) === T.PATH && !m.objs.some((o) => o.x === x && o.y === y)) m.set(x, y, T.TALL); }
@@ -368,26 +380,38 @@ export const LINKS = [
   { name: 'Coastline Path', a: 'city3', aSide: 'east', b: 'city5', bSide: 'east', needs: ['swim', 'cut'] },
   { name: 'Highland Pass', a: 'city5', aSide: 'west', b: 'city7', bSide: 'west', needs: ['smash', 'cut'] },
 ];
+// each new world flips which side the loop trails leave from and re-rolls what blocks them
+const LINK_NAMES = { cut: ['Sapling Trail', 'Thicket Path', 'Bramble Way', 'Greenwood Lane'], smash: ['Boulder Gorge', 'Rubble Pass', 'Stonebreak Way', 'Quarry Path'], swim: ['Coastline Path', 'River Crossing', 'Tidewater Trail'], both: ['Highland Pass', 'Ridge Road', 'Wildcliff Trail', 'Old Mine Road'] };
+const linkCache = {};
+export function linksFor() {
+  if (!SEED) return LINKS; if (linkCache[SEED]) return linkCache[SEED];
+  const r = rng(hash(SEED + 'links')); const flip = r() < 0.5; const fs = (sd) => (flip ? (sd === 'east' ? 'west' : 'east') : sd);
+  const one = () => (r() < 0.5 ? 'cut' : 'smash');
+  const needs = [['cut'], [one()], ['swim', one()], r() < 0.5 ? ['smash', 'cut'] : ['cut', 'smash']];
+  const out = LINKS.map((L, k) => { const n = needs[k]; const pool = n.length > 1 && n[0] !== 'swim' ? LINK_NAMES.both : LINK_NAMES[n[0]]; return { ...L, aSide: fs(L.aSide), bSide: fs(L.bSide), needs: n, name: pool[Math.floor(r() * pool.length)] }; });
+  const names = new Set(); out.forEach((L) => { while (names.has(L.name)) L.name = 'New ' + L.name; names.add(L.name); });
+  return (linkCache[SEED] = out);
+}
 export const LINK_H = 50, LINK_RIVER = 24;
 // where a link trail enters a town (the tile just inside the side exit)
 export function linkPort(W, place, side) {
-  if (place === 'hometown') return { x: 22, ys: [9, 10], edge: 23 };
+  if (place === 'hometown') return side === 'west' ? { x: 1, ys: [9, 10], edge: 0 } : { x: 22, ys: [9, 10], edge: 23 };
   return side === 'west' ? { x: 1, ys: [9, 10], edge: 0 } : { x: 46, ys: [19, 20], edge: 47 };
 }
 export function openLinkPorts(W, m, place) {
-  LINKS.forEach((L, k) => {
+  linksFor().forEach((L, k) => {
     for (const [pl, side, end] of [[L.a, L.aSide, 'south'], [L.b, L.bSide, 'north']]) {
       if (pl !== place) continue; const P = linkPort(W, place, side);
-      for (const y of P.ys) { for (let x = Math.min(P.x, P.edge); x <= Math.max(P.x, P.edge); x++) m.set(x, y, T.PATH); if (place === 'hometown') m.set(21, y, T.PATH);
+      for (const y of P.ys) { for (let x = Math.min(P.x, P.edge); x <= Math.max(P.x, P.edge); x++) m.set(x, y, T.PATH); if (place === 'hometown') m.set(side === 'west' ? 2 : 21, y, T.PATH);
         m.warps.push({ x: P.edge, y, to: 'link' + k, tx: 12 + (y - P.ys[0]), ty: end === 'south' ? LINK_H - 2 : 1, dir: end === 'south' ? 'up' : 'down' }); }
       m.objs = m.objs.filter((o) => !(P.ys.includes(o.y) && Math.abs(o.x - P.x) <= 1));
-      const sy = P.ys[0] - 1, sx = place === 'hometown' ? 20 : P.x + (side === 'west' ? 1 : -1); if ([T.GRASS, T.FLOWER, T.TALL].includes(m.get(sx, sy)) && !m.objs.some((o) => o.x === sx && o.y === sy)) { m.set(sx, sy, T.SIGN); const other = end === 'south' ? L.b : L.a; m.objs.push({ x: sx, y: sy, kind: 'sign', text: [`${side === 'west' ? '← West' : 'East →'}: ${L.name}`, `A loop trail to ${other === 'hometown' ? HOMETOWN : W.cities[+other.slice(4)].name}. Blocked by ${L.needs.map((n) => FIELD_SKILL_NAMES[n]).join(' & ')} obstacles.`] }); }
+      const sy = P.ys[0] - 1, sx = place === 'hometown' ? (side === 'west' ? 3 : 20) : P.x + (side === 'west' ? 1 : -1); if ([T.GRASS, T.FLOWER, T.TALL].includes(m.get(sx, sy)) && !m.objs.some((o) => o.x === sx && o.y === sy)) { m.set(sx, sy, T.SIGN); const other = end === 'south' ? L.b : L.a; m.objs.push({ x: sx, y: sy, kind: 'sign', text: [`${side === 'west' ? '← West' : 'East →'}: ${L.name}`, `A loop trail to ${other === 'hometown' ? HOMETOWN : W.cities[+other.slice(4)].name}. Blocked by ${L.needs.map((n) => FIELD_SKILL_NAMES[n]).join(' & ')} obstacles.`] }); }
     }
   });
 }
 function link(W, k) {
-  const L = LINKS[k]; const w = 26, h = LINK_H, m = grid(w, h, T.GRASS); const R = rng(hash(W.id + SEED + 'link' + k));
-  const biome = k === 2 ? 'coast' : k === 1 || k === 3 ? 'desert' : 'forest'; border(m, [12, 13], [12, 13]);
+  const L = linksFor()[k]; const w = 26, h = LINK_H, m = grid(w, h, T.GRASS); const R = rng(hash(W.id + SEED + 'link' + k));
+  const biome = L.needs.includes('swim') ? 'coast' : L.needs[0] === 'smash' ? 'desert' : SEED ? ['forest', 'meadow', 'snow'][hash(SEED + 'lb' + k) % 3] : 'forest'; border(m, [12, 13], [12, 13]);
   // winding trail
   let x = 12; for (let y = h - 1; y >= 0; y--) { m.set(x, y, T.PATH); m.set(x + 1, y, T.PATH); if (y % 4 === 0 && y > 3 && y < h - 4) { const nx = Math.max(4, Math.min(w - 6, x + R.int(-3, 3))); for (let xx = Math.min(x, nx); xx <= Math.max(x, nx) + 1; xx++) m.set(xx, y, T.PATH); x = nx; } }
   for (let y = 0; y < 4; y++) for (const xx of [12, 13]) m.set(xx, y, T.PATH); for (let y = h - 4; y < h; y++) for (const xx of [12, 13]) m.set(xx, y, T.PATH);
@@ -395,7 +419,7 @@ function link(W, k) {
   // reconnect the top of the winding trail to the exit columns
   for (let y = 3; y < 8; y++) { const xs = []; for (let xx = 2; xx < w - 2; xx++) if (m.get(xx, y) === T.PATH) xs.push(xx); if (xs.length) { const a = Math.min(...xs, 12), b = Math.max(...xs, 13); for (let xx = a; xx <= b; xx++) m.set(xx, 3, T.PATH); break; } }
   for (let y = 3; y <= 7; y++) { /* columns 12-13 already open near the top */ }
-  const wallTile = k === 1 || k === 3 ? T.ROCK : T.TREE;
+  const wallTile = L.needs[0] === 'smash' || (L.needs[0] === 'swim' && L.needs[1] === 'smash') ? T.ROCK : T.TREE;
   const wall = (y, tile, under) => { for (let xx = 2; xx < w - 2; xx++) m.set(xx, y, wallTile); const gaps = []; for (let xx = 2; xx < w - 2; xx++) if (m.get(xx, y - 1) === T.PATH || m.get(xx, y + 1) === T.PATH) gaps.push(xx); const gx = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 12; m.set(gx, y, tile); m.set(gx, y - 1, T.PATH); m.set(gx, y + 1, T.PATH); (m.obstacles = m.obstacles || []).push([gx, y, tile, under]); return gx; };
   const obs = { cut: T.CUTTREE, smash: T.CRACKROCK };
   const first = L.needs[0], second = L.needs[1] || L.needs[0];
@@ -425,18 +449,19 @@ function sea(W) {
   const w = 40, h = 34, m = grid(w, h, T.WATER); const R = rng(hash(W.id + SEED + 'sea'));
   for (let x = 0; x < w; x++) { m.set(x, 0, T.ROCK); m.set(x, h - 1, T.ROCK); } for (let y = 0; y < h; y++) { m.set(0, y, T.ROCK); m.set(w - 1, y, T.ROCK); }
   for (const y of [16, 17]) { m.set(0, y, T.WATER); m.set(w - 1, y, T.WATER); }
-  m.warps.push({ x: 0, y: 16, to: 'zone3', tx: ZW - 2, ty: 16, dir: 'left' }, { x: 0, y: 17, to: 'zone3', tx: ZW - 2, ty: 17, dir: 'left' }, { x: w - 1, y: 16, to: 'link2', tx: 24, ty: LINK_RIVER + 2, dir: 'right' }, { x: w - 1, y: 17, to: 'link2', tx: 24, ty: LINK_RIVER + 2, dir: 'right' });
+  m.warps.push({ x: 0, y: 16, to: 'zone' + seaZone(), tx: ZW - 2, ty: 16, dir: 'left' }, { x: 0, y: 17, to: 'zone' + seaZone(), tx: ZW - 2, ty: 17, dir: 'left' }, { x: w - 1, y: 16, to: 'link2', tx: 24, ty: LINK_RIVER + 2, dir: 'right' }, { x: w - 1, y: 17, to: 'link2', tx: 24, ty: LINK_RIVER + 2, dir: 'right' });
   const isle = (x0, y0, iw, ih) => { m.rect(x0, y0, iw, ih, T.PATH); m.rect(x0 + 1, y0 + 1, iw - 2, ih - 2, T.GRASS); };
-  isle(4, 3, 9, 7); isle(27, 3, 10, 8); isle(5, 22, 11, 8); isle(26, 21, 10, 9); isle(17, 13, 6, 5);
-  m.rect(6, 24, 7, 4, T.TALL); m.rect(28, 5, 3, 3, T.TALL);
-  m.objs.push(npc(8, 5, { name: 'Old Turtle Keeper', tips: ['Welcome to Turtle Isle! Few trainers can swim this far.', 'The atoll to the south-west is full of rare monsters. The lighthouse keeps sailors safe… and hides a secret.', ...tipLines(W, 4, 23, 1)], pal: { coat: true, shirt: '#3a8a6a', hair: '#e0e0e0' } }));
-  m.objs.push({ x: 10, y: 7, kind: 'item', item: 'maxtonic', count: 2, key: 'seai0' });
-  m.objs.push({ x: 33, y: 5, kind: 'ride', ride: 'lighthouse', decor: true }); m.set(32, 8, T.SIGN); m.objs.push({ x: 32, y: 8, kind: 'sign', text: ['Lighthouse Isle', 'The keeper left a note: "Treasure lies where the map has an X — the eastern isle."'] });
-  m.objs.push({ x: 29, y: 9, kind: 'item', item: 'cube3', count: 1, key: 'seai1' });
-  [[28, 23], [31, 25], [34, 27]].forEach(([x, y], j) => m.objs.push({ x, y, kind: 'item', item: ['cube3', 'revive', 'maxtonic'][j], count: j ? 2 : 1, key: 'seaX' + j }));
-  m.set(30, 22, T.SIGN); m.objs.push({ x: 30, y: 22, kind: 'sign', text: ['Treasure Isle', 'X marks the spot… three times!'] });
-  m.objs.push({ x: 14, y: 26, kind: 'item', hidden: true, walkable: true, item: 'cube3', count: 1, key: 'seah' });
-  m.set(19, 14, T.SIGN); m.objs.push({ x: 19, y: 14, kind: 'sign', text: ['Azure Sea', 'West: Mirror Lake. East: the Coastline Path. Islands: Turtle Isle (NW), Lighthouse Isle (NE), Coral Atoll (SW), Treasure Isle (SE).'] });
+  // four corner isles; each new world deals their roles out differently
+  const isles = [[4, 3, 9, 7], [27, 3, 10, 8], [5, 22, 11, 8], [26, 21, 10, 9]]; isles.forEach((q) => isle(...q)); isle(17, 13, 6, 5);
+  const roles = ['turtle', 'light', 'coral', 'treasure']; if (SEED) for (let k = roles.length - 1; k > 0; k--) { const j = R.int(0, k); [roles[k], roles[j]] = [roles[j], roles[k]]; }
+  const dirName = (k) => ['north-west', 'north-east', 'south-west', 'south-east'][k]; const where = (role) => dirName(roles.indexOf(role));
+  isles.forEach(([x0, y0, iw, ih], k) => { const role = roles[k];
+    if (role === 'turtle') { m.objs.push(npc(x0 + 4, y0 + 2, { name: 'Old Turtle Keeper', tips: ['Welcome to Turtle Isle! Few trainers can swim this far.', `Coral Atoll lies to the ${where('coral')} — full of rare monsters. The lighthouse (${where('light')}) keeps sailors safe… and hides a secret.`, ...tipLines(W, 4, 23, 1)], pal: { coat: true, shirt: '#3a8a6a', hair: '#e0e0e0' } })); m.objs.push({ x: x0 + 6, y: y0 + 4, kind: 'item', item: 'maxtonic', count: 2, key: 'seai0' }); m.arrive = [x0 + 4, y0 + 3]; }
+    if (role === 'light') { m.rect(x0 + 1, y0 + 2, 3, 3, T.TALL); m.objs.push({ x: x0 + 6, y: y0 + 2, kind: 'ride', ride: 'lighthouse', decor: true }); m.set(x0 + 5, y0 + 5, T.SIGN); m.objs.push({ x: x0 + 5, y: y0 + 5, kind: 'sign', text: ['Lighthouse Isle', `The keeper left a note: "Treasure lies on the ${where('treasure')} isle."`] }); m.objs.push({ x: x0 + 2, y: y0 + ih - 2, kind: 'item', item: 'cube3', count: 1, key: 'seai1' }); }
+    if (role === 'coral') { m.rect(x0 + 1, y0 + 1, iw - 4, ih - 3, T.TALL); m.objs.push({ x: x0 + iw - 2, y: y0 + ih - 2, kind: 'item', hidden: true, walkable: true, item: 'cube3', count: 1, key: 'seah' }); }
+    if (role === 'treasure') { m.set(x0 + 4, y0 + 1, T.SIGN); m.objs.push({ x: x0 + 4, y: y0 + 1, kind: 'sign', text: ['Treasure Isle', 'X marks the spot… three times!'] }); [[x0 + 2, y0 + 3], [x0 + 4, y0 + 4], [x0 + 6, y0 + 5]].forEach(([x, y], j) => m.objs.push({ x, y, kind: 'item', item: ['cube3', 'revive', 'maxtonic'][j], count: j ? 2 : 1, key: 'seaX' + j })); }
+  });
+  m.set(19, 14, T.SIGN); m.objs.push({ x: 19, y: 14, kind: 'sign', text: ['Azure Sea', 'West: Mirror Lake. East: the Coastline Path. Islands: Turtle Isle, Lighthouse Isle, Coral Atoll and Treasure Isle.'] });
   Object.assign(m, { name: 'Azure Sea', kind: 'route', biome: 'coast', music: 'route', ci: 5, encounter: 6, encRate: 1.2, secret: true });
   void R; return m;
 }
@@ -467,7 +492,8 @@ function garden(W, i) {
   m.rect(3, 3, 5, 4, T.TALL); m.rect(12, 7, 5, 4, T.TALL); m.rect(11, 3, 4, 2, T.WATER);
   scatter(m, R, 26, [T.FLOWER, T.FLOWER, T.FLOWER, T.TREE], (x, y) => y === 7 || x <= 2);
   for (let x = 0; x < 9; x++) m.set(x, 7, T.PATH);
-  m.warps.push({ x: 0, y: 7, to: `city${i}`, tx: 37, ty: 15, dir: 'left' });
+  const back = SEED ? getMap(W, 'city' + i).gardenBack : [37, 15];
+  m.warps.push({ x: 0, y: 7, to: `city${i}`, tx: back[0], ty: back[1], dir: 'down' });
   m.set(8, 5, T.SIGN); m.objs.push({ x: 8, y: 5, kind: 'sign', text: ['Secret Garden', 'Rare and Epic monsters love quiet places like this. Shimmering Prismatic ones appear more often in secret spots!'] });
   m.objs.push(npc(9, 9, { name: 'Gardener', tips: [`I keep notes on monster rarity: ★ Common, ★★ Uncommon, ★★★ Rare, ★★★★ Epic.`, 'Legends say four ★★★★★ Legendary guardians hide in lairs along the odd-numbered routes — look for gaps in the trees.', `And a ★★★★★★ Mythic sleeps beneath ${HOMETOWN}… but only for a true master.`], pal: { shirt: '#5a9a3a', hat: '#d8b040' } }));
   m.objs.push({ x: 17, y: 3, kind: 'item', item: R.pick(['cube2', 'supertonic', 'revive']), count: 2, key: `gd${i}i` });
@@ -525,6 +551,7 @@ function eraMap(W, era) {
 
 // ------------------------------------------------------------ cities
 function city(W, i) {
+  if (SEED) return cityRandom(W, i);
   const c = W.cities[i]; const w = 48, h = 26, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'city' + i)); const biome = cityBiome(W, i);
   // layout variation: mirror + which slot holds the Mend Station / Study Lab / Supply Depot
   const M = variant(W, 'cityM' + i, 2) === 1; const perm = [[0, 1, 2], [1, 0, 2], [2, 1, 0], [0, 2, 1], [1, 2, 0], [2, 0, 1]][variant(W, 'cityP' + i, 6)];
@@ -566,6 +593,56 @@ function city(W, i) {
     m.warps.push({ x, y: h - 1, to: `zone${i + 1}`, tx: x, ty: 1, dir: 'down' });
     m.warps.push({ x, y: 0, to: `route${i + 2}`, tx: 10 + (x - 14), ty: ry, dir: 'up' });
   }
+  openLinkPorts(W, m, 'city' + i);
+  Object.assign(m, { name: c.name, kind: 'town', biome, music: CITY_MOOD[biome] || 'town', ci: i, cityIdx: i, gateNorth: { y: 1, badge: i } });
+  return m;
+}
+// Seeded worlds get a freshly arranged city: every building lands in a different lot, with its own offset,
+// and the townsfolk, ponds, signs and the hidden garden door move around too.
+function cityRandom(W, i) {
+  const c = W.cities[i]; const w = 48, h = 26, m = grid(w, h, T.GRASS); const r = rng(hash(W.id + SEED + 'cityR' + i)); const biome = cityBiome(W, i);
+  border(m, [14, 15], [14, 15]);
+  m.rect(14, 0, 2, h, T.PATH); m.rect(2, 9, w - 4, 2, T.PATH); m.rect(2, 19, w - 4, 2, T.PATH);
+  const hedgeXs = [29, 38]; for (const hx of hedgeXs) for (let y = 2; y < h - 2; y++) m.set(hx, y, y === 9 || y === 10 || y === 19 || y === 20 ? T.PATH : T.TREE);
+  const lots = [[2, 2, 11, 6], [17, 2, 11, 6], [30, 2, 8, 6], [39, 2, 7, 6], [2, 12, 11, 6], [17, 12, 11, 6], [30, 12, 8, 6], [39, 12, 7, 6]];
+  const defs = [['gym', 8, 6, `city${i}_gym`, c.name + ' Mastery Hall'], ['archive', 7, 6, `city${i}_archive`, 'Archive'], ['academy', 7, 6, `city${i}_academy`, 'Academy'], ['arcade', 7, 5, `city${i}_arcade`, 'Arcade'], ['mend', 6, 5, `city${i}_mend`, 'Mend Station'], ['lab', 6, 5, `city${i}_lab`, 'Study Lab'], ['depot', 6, 5, `city${i}_depot`, 'Supply Depot'], ['house', 3 + r.int(0, 1), 4, `city${i}_house`, 'House']];
+  let order; for (let t = 0; t < 50; t++) { order = lots.map((_, k) => k).sort(() => r() - 0.5); if (defs.every((d, k) => lots[order[k]][2] >= d[1])) break; }
+  const reserved = new Set(); const res = (x, y) => reserved.add(x + ',' + y); const doors = {};
+  defs.forEach(([kind, bw, bh, to, label], k) => { const [lx, ly, lw, lh] = lots[order[k]]; const bx = lx + r.int(0, lw - bw), by = ly + r.int(0, lh - bh);
+    const d = building(m, bx, by, bw, bh, kind, to, label); doors[kind] = d; const street = ly === 2 ? 9 : 19;
+    for (let y = d.dy + 1; y < street; y++) { m.set(d.dx, y, T.PATH); res(d.dx, y); res(d.dx - 1, y); res(d.dx + 1, y); } });
+  const ent = { gym: [7, 18], mend: [5, 7], lab: [6, 8], house: [4, 6], depot: [5, 7], archive: [6, 8], academy: [6, 8], arcade: [6, 8] };
+  for (const wp of m.warps) if (wp.door) { const e = ent[wp.kind]; wp.tx = e[0]; wp.ty = e[1]; }
+  for (let x = 0; x < w; x++) { res(x, 8); res(x, 11); res(x, 18); res(x, 21); } for (let y = 0; y < h; y++) { res(13, y); res(16, y); } res(13, 2);
+  const free = (x, y) => m.get(x, y) === T.GRASS && !reserved.has(x + ',' + y) && !m.objs.some((o) => o.x === x && o.y === y);
+  const reachFrom = () => { const seen = new Set(['14,9']); const q = [[14, 9]]; while (q.length) { const [x, y] = q.pop(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = nx + ',' + ny; if (seen.has(k) || nx < 1 || ny < 1 || nx > 46 || ny > 24 || SOLID.has(m.get(nx, ny)) || m.objs.some((o) => o.x === nx && o.y === ny && !o.walkable)) continue; seen.add(k); q.push([nx, ny]); } } return seen; };
+  let reach = reachFrom();
+  // the hidden garden door sits somewhere in a hedge, reached from a grassy spot beside it
+  { const cand = []; for (const hx of hedgeXs) for (let y = 3; y < 23; y++) { if (m.get(hx, y) !== T.TREE || [8, 9, 10, 11, 18, 19, 20, 21].includes(y)) continue; for (const ax of [hx - 1, hx + 1]) if (m.get(ax, y) === T.GRASS && reach.has(ax + ',' + y) && !reserved.has(ax + ',' + y)) cand.push([hx, y, ax]); }
+    const [sx, sy, ax] = cand.length ? cand[r.int(0, cand.length - 1)] : [38, 22, 37]; m.set(sx, sy, T.TREE); m.set(ax, sy, T.GRASS); m.gardenBack = [ax, sy];
+    m.objs.push({ x: sx, y: sy, kind: 'secretdoor', to: `garden${i}`, tx: 1, ty: 7, dir: 'right', label: 'The hedge here is thin… there\'s a garden on the other side!' }); res(ax, sy); res(ax, sy - 1); res(ax, sy + 1); }
+  // ponds and little parks in the open strips
+  for (let k = 0; k < 2 + r.int(0, 2); k++) { const pw = r.int(3, 5), x0 = r.int(2, w - 3 - pw), y0 = r.pick([22, 22, 12, 2]); let ok = true; for (let y = y0; y < y0 + 2; y++) for (let x = x0; x < x0 + pw; x++) if (!free(x, y) || !free(x, y - 1) || !free(x, y + 2)) ok = false; if (!ok) continue; m.rect(x0, y0, pw, 2, T.WATER); for (let x = x0 - 1; x <= x0 + pw; x++) { if (free(x, y0 - 1) && r() < 0.5) m.set(x, y0 - 1, T.FLOWER); } }
+  reach = reachFrom();
+  const spots = []; for (let y = 2; y < 24; y++) for (let x = 2; x < 46; x++) if (free(x, y) && reach.has(x + ',' + y) && [m.get(x + 1, y), m.get(x - 1, y), m.get(x, y + 1), m.get(x, y - 1)].includes(T.PATH) && !(y === 9 || y === 10 || y === 19 || y === 20)) spots.push([x, y]);
+  // also allow spots right beside the streets
+  for (let x = 3; x < 45; x++) for (const y of [8, 11, 18, 21]) if (m.get(x, y) === T.GRASS && x !== 13 && x !== 16 && !m.objs.some((o) => o.x === x && o.y === y) && ![8, 11, 18, 21].some(() => false)) spots.push([x, y]);
+  const take = () => { while (spots.length) { const [x, y] = spots.splice(r.int(0, spots.length - 1), 1)[0]; if (m.get(x, y) !== T.GRASS || m.objs.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2) || m.warps.some((q) => Math.abs(q.x - x) + Math.abs(q.y - y) < 2) || [m.get(x, y - 1), m.get(x, y + 1)].includes(T.DOOR) || [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => !SOLID.has(m.get(x + dx, y + dy))).length < 3 || reserved.has(x + ',' + y)) continue; return [x, y]; } return null; };
+  const pals = ['#d04040', '#3070d0', '#30a050', '#8040c0', '#e0a020', '#c06020', '#2080a0'];
+  for (let k = 0; k < 6; k++) { const p = take(); if (!p) break; m.objs.push(npc(p[0], p[1], { name: W.trainerName(hash(c.name + SEED + k)).name, tips: tipLines(W, i, k), wander: k % 2 === 0, pal: { shirt: pals[k] } })); }
+  { const p = take(); if (p) m.objs.push(npc(p[0], p[1], { kind: 'researcher', ci: i, name: 'Field Researcher', pal: { coat: true, shirt: '#30a050' } })); }
+  { const p = take(); if (p) m.objs.push(npc(p[0], p[1], { name: 'Tutor', tips: tipLines(W, i, 13, 3), wander: true, pal: { coat: true, shirt: '#3060a0' } })); }
+  const signBy = (d, text) => { for (const [dx, dy] of [[2, 1], [-2, 1], [3, 1], [-3, 1]]) { const x = d.dx + dx, y = d.dy + dy; if (free(x, y) || m.get(x, y) === T.FLOWER) { m.set(x, y, T.SIGN); m.objs.push({ x, y, kind: 'sign', text }); res(x, y); return; } } };
+  signBy(doors.gym, [`${c.name} Mastery Hall`, `Leader ${c.leader} — "${c.theme}"`, 'Challengers must first pass the Study Lab trial.']);
+  signBy(doors.academy, ['Academy', 'Lessons from easy to mastery. The Arcade nearby has mini games that train what you learn.']);
+  { const x = r() < 0.5 ? 13 : 16; m.set(x, 22, T.SIGN); m.objs.push({ x, y: 22, kind: 'sign', text: [`${c.name} — ${c.theme}`, `Mastery Hall Leader: ${c.leader}. Badge: ${c.badge}.`] }); }
+  { for (let t = 0; t < 60; t++) { const x = r.int(3, 44), y = r.int(3, 22); if (free(x, y) && reach.has(x + ',' + y)) { m.objs.push({ x, y, kind: 'item', hidden: true, walkable: true, item: 'maxtonic', count: 1, key: `c${i}h` }); res(x, y); break; } } }
+  m.objs.push(npc(13, 2, { kind: 'guard', name: 'Gatekeeper', gate: 'badge', ci: i, dir: 'down' }));
+  const before = m.t.slice();
+  scatter(m, r, 30 + r.int(0, 30), biome === 'neon' || biome === 'crystal' ? [T.TREE, T.FLOWER, T.ROCK] : [T.FLOWER, T.FLOWER, T.TREE, T.TREE, T.ROCK], (x, y) => reserved.has(x + ',' + y) || (x >= 13 && x <= 16) || [m.get(x + 1, y), m.get(x - 1, y), m.get(x, y + 1), m.get(x, y - 1)].some((t) => t === T.PATH || t === T.DOOR) || m.objs.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2));
+  { const rc = reachFrom(); const near = (o) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => rc.has(o.x + dx + ',' + (o.y + dy))); if (m.objs.some((o) => !near(o))) m.t.set ? m.t.set(before) : before.forEach((v, k) => { m.t[k] = v; }); }
+  const ry = i + 2 <= 9 ? routeEntryY(W, i + 2) : 38;
+  for (const x of [14, 15]) { m.warps.push({ x, y: h - 1, to: `zone${i + 1}`, tx: x, ty: 1, dir: 'down' }); m.warps.push({ x, y: 0, to: `route${i + 2}`, tx: 10 + (x - 14), ty: ry, dir: 'up' }); }
   openLinkPorts(W, m, 'city' + i);
   Object.assign(m, { name: c.name, kind: 'town', biome, music: CITY_MOOD[biome] || 'town', ci: i, cityIdx: i, gateNorth: { y: 1, badge: i } });
   return m;

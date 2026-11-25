@@ -114,7 +114,7 @@ export const events = {
     return out;
   },
   async teleport(id) {
-    let x, y; if (id.startsWith('zone')) { const zm = getMap(W(), id); x = 14; y = zm.h - 3; } else if (id === 'sea') { x = 8; y = 6; } else [x, y] = flyPoint(W(), id);
+    let x, y; if (id.startsWith('zone')) { const zm = getMap(W(), id); x = 14; y = zm.h - 3; } else if (id === 'sea') { [x, y] = getMap(W(), 'sea').arrive || [8, 6]; } else [x, y] = flyPoint(W(), id);
     const p = S().players[0]; const m = p.party.find((q) => q.hp > 0) || p.party[0]; const nm = this.teleportSpots().find((q) => q.id === id)?.name || '';
     await say(`${m ? monName(W(), m) : p.name} used *Teleport*! Warping to ${nm}…`);
     audio.sfx('evolve'); await G.world.warp(id, x, y, 'down');
@@ -219,7 +219,9 @@ const lineCaught = (li) => W().lines[li].ids.some((id) => S().caught[id]);
 const handlers = {
   async npc(o) {
     if (o.tips && o.tips.length) {
-      o.ti = (o.ti || 0); const id = o.tips[o.ti % o.tips.length]; o.ti++;
+      o.ti = (o.ti || 0); let id = o.tips[o.ti % o.tips.length]; o.ti++;
+      // tips can be glossary term ids (taught with a lead-in) or plain lines of advice
+      if (!termLine(id)) { const next = o.tips.find((t) => termLine(t)); if (typeof id === 'string' && id.trim()) { await say(id, o.name); return; } if (!next) { await say(o.lines || ['Hello there!'], o.name); return; } id = next; }
       await say([LEAD[(o.i + o.ti) % LEAD.length], termLine(id)], o.name); learn(id); await offerMore(id); return;
     }
     await say(o.lines || ['Hello there!'], o.name);
@@ -391,7 +393,7 @@ async function previewChoose(sp, text) {
 
 // Subject picker is two steps: pick a category, then a subject inside it (grouped so the list stays short).
 const TOPIC_GROUPS = [
-  { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, cloud, DevOps and engineering interviews.', sections: [['Programming', ['cs', 'python', 'java', 'golang', 'softeng']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
+  { id: 'cs', icon: '💻', name: 'Computer Science & Tech', blurb: 'Programming, system design, cloud, DevOps and certifications.', sections: [['Programming', ['cs', 'python', 'java', 'golang', 'softeng']], ['Architecture', ['systemdesign']], ['Cloud & DevOps', ['kubernetes', 'devops', 'terraform']]] },
   { id: 'lang', icon: '🌍', name: 'World Languages', blurb: 'Learn to speak French, Spanish or Maltese.', sections: [['Languages', ['french', 'spanish', 'maltese']]] },
   { id: 'elec', icon: '🔧', name: 'Trades & Engineering', blurb: 'Circuits, the electrician trade, and cars & engines.', sections: [['Electrical', ['electrical', 'electrician']], ['Automotive', ['automotive']]] },
   { id: 'sec', icon: '🛡', name: 'Cyber Security & Networking', blurb: 'How networks work, how to defend them, and ethical hacking.', sections: [['Security & Networks', ['networking', 'cybersec', 'hacking']]] },

@@ -268,5 +268,5 @@ export const ERAS = {
       ['Synthetic biology means…', 'Designing and building new biological parts and systems', 'Plastic animals', 'Robots made of metal', 'Studying fossils only', 'E.g. microbes engineered to make medicines.']]),
   },
 };
-const SET = { cybersec: 'security', hacking: 'security', trading: 'finance', electrician: 'electrical', 'math-elem': 'math', 'math-middle': 'math', 'math-high': 'math', 'ela-elem': 'ela', 'ela-high': 'ela', 'science-elem': 'science' };
+const SET = { systemdesign: 'devops', cybersec: 'security', hacking: 'security', trading: 'finance', electrician: 'electrical', 'math-elem': 'math', 'math-middle': 'math', 'math-high': 'math', 'ela-elem': 'ela', 'ela-high': 'ela', 'science-elem': 'science' };
 export const eraSetFor = (topicId) => ERAS[SET[topicId] || topicId] || ERAS.cs;

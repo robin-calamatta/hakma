@@ -15,11 +15,15 @@ const CLASSES = { tech: ['Intern', 'Junior Dev', 'Analyst', 'SRE', 'Ops Ranger',
 
 const worlds = {};
 export const topics = () => TOPICS;
+// per-save seed: reshuffles which wild monsters live where, their rarities and the legend names (empty = legacy)
+let CSEED = '';
+export function setContentSeed(s) { CSEED = s || ''; }
+function shuffleSeeded(arr, seed) { const r = rng(seed); const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 export function getWorld(topicId) {
-  if (worlds[topicId]) return worlds[topicId];
+  const key = topicId + '|' + CSEED; if (worlds[key]) return worlds[key];
   const t = TOPICS.find((x) => x.id === topicId);
   if (!t) throw new Error('Unknown topic ' + topicId);
-  return (worlds[topicId] = buildWorld(t));
+  return (worlds[key] = buildWorld(t));
 }
 
 export const RARITY = {
@@ -60,10 +64,11 @@ function buildWorld(t) {
   });
   W.starters = [0, 1, 2].filter((i) => W.lines[i]).map((i) => W.lines[i].ids[0]);
   const wild = W.lines.slice(3).filter((l) => !l.route);
-  wild.forEach((l, k) => { l.route = 1 + Math.floor((k * 9) / Math.max(1, wild.length)); });
+  const wildOrder = CSEED ? shuffleSeeded(wild, hash(t.id + CSEED + 'wild')) : wild;
+  wildOrder.forEach((l, k) => { l.route = 1 + Math.floor((k * 9) / Math.max(1, wild.length)); });
   // ---- rarity tiers: common · uncommon · rare · epic (wild), legendary and mythic (hidden lairs only)
   W.lines.forEach((l) => {
-    const x = rng(hash(t.id + l.names[0] + 'rarity'))(); l.rarity = l.li < 3 ? 'rare' : x < 0.48 ? 'common' : x < 0.76 ? 'uncommon' : x < 0.92 ? 'rare' : 'epic';
+    const x = rng(hash(t.id + CSEED + l.names[0] + 'rarity'))(); l.rarity = l.li < 3 ? 'rare' : x < 0.48 ? 'common' : x < 0.76 ? 'uncommon' : x < 0.92 ? 'rare' : 'epic';
     for (const id of l.ids) { const sp = W.species[id]; sp.rarity = l.rarity; const mul = RARITY[l.rarity].stat; for (const k in sp.base) sp.base[k] = Math.round(sp.base[k] * mul); }
   });
   W.legends = []; const lairCities = [1, 3, 5, 7]; const SUF = ['oros', 'arch', 'aeon', 'thrax', 'astra'];
@@ -76,9 +81,9 @@ function buildWorld(t) {
     W.lines.push({ li, names: [name], type, concept, ids: [id], rarity, legend: true }); if (rarity === 'legendary') W.legends.push(id); return id;
   };
   const LEG = ['Aetherion', 'Solgaron', 'Nyxaroth', 'Valkyra', 'Thundrake', 'Glaciorn', 'Pyrolith', 'Seraphex', 'Chronyx', 'Umbralith', 'Zephyros', 'Astraeon', 'Vortexa', 'Lumenor', 'Obsidrax', 'Celestine', 'Tempestor', 'Nebularch', 'Quasarion', 'Titanox', 'Draconis', 'Aurorix']; const MYT = ['Omniversa', 'Genesix', 'Infinitor', 'Primordia', 'Aeonyx', 'Eternara']; const used2 = new Set(Object.values(W.species).map((x) => x.name));
-  lairCities.forEach((ci, k) => { const c = t.cities[ci]; const term = (c.terms[c.terms.length - 1] || [c.theme])[0]; let j = hash(t.id + 'leg' + k) % LEG.length; while (used2.has(LEG[j])) j = (j + 1) % LEG.length; const name = LEG[j]; used2.add(name);
+  lairCities.forEach((ci, k) => { const c = t.cities[ci]; const term = (c.terms[c.terms.length - 1] || [c.theme])[0]; let j = hash(t.id + CSEED + 'leg' + k) % LEG.length; while (used2.has(LEG[j])) j = (j + 1) % LEG.length; const name = LEG[j]; used2.add(name);
     mkLegend(name, c.type || 'logic', `Guardian of ${c.theme}`, term, 'legendary', k); });
-  W.mythic = mkLegend(MYT[hash(t.id + 'myth') % MYT.length], t.cities[7].type || 'flux', `Sovereign of ${t.name}`, t.name, 'mythic', 4);
+  W.mythic = mkLegend(MYT[hash(t.id + CSEED + 'myth') % MYT.length], t.cities[7].type || 'flux', `Sovereign of ${t.name}`, t.name, 'mythic', 4);
   // weighted wild pick: rarer lines appear less often (and more often in hidden places)
   W.pickWild = (lines, R, boost = 0) => { const wts = lines.map((li) => { const rr = W.lines[li].rarity; return rr === 'common' ? 50 - boost * 25 : rr === 'uncommon' ? 28 : rr === 'rare' ? 14 + boost * 10 : rr === 'epic' ? 5 + boost * 8 : 1; }); let x = R() * wts.reduce((a, b) => a + Math.max(1, b), 0); for (let i = 0; i < lines.length; i++) { x -= Math.max(1, wts[i]); if (x <= 0) return lines[i]; } return lines[lines.length - 1]; };
   // ---- cities, terms, questions

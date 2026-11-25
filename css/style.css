@@ -273,3 +273,4 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 .boxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.4em, 1fr)); gap: 0.35em; max-height: 52vh; overflow: auto; }
 .bcell { display: flex; flex-direction: column; align-items: center; gap: 0.15em; padding: 0.35em 0.2em; font-size: 0.78em; text-align: center; }
 .bcell .mini { width: 2.4em; height: 2.4em; } .bcell .bn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; } .bcell .bl { font-size: 0.85em; opacity: 0.85; } .bcell .type { font-style: normal; font-size: 0.9em; padding: 0 0.3em; }
+.lessonlist { min-width: 46%; } .lessonlist button { display: block; text-align: left; width: 100%; }
