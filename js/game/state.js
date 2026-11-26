@@ -1,4 +1,4 @@
-// Global game state, save format, and monster maths.
+// Global game state, save format, and Hakma maths.
 import { uid, clamp } from '../core/rng.js';
 
 export const G = { save: null, W: null, ui: null, scene: null, net: null, busy: 0, t: 0, slot: 0, world: null, battle: null };
@@ -6,20 +6,20 @@ export const SAVE_VERSION = 1;
 export const PLAYER_COLORS = ['#e04848', '#3a7ae0', '#30b060', '#e0a020'];
 
 export const ITEMS = {
-  cube:       { name: 'Capture Cube', price: 200, desc: 'Captures a wild monster. Answer correctly for a big bonus.', kind: 'cube', rate: 1 },
+  cube:       { name: 'Capture Cube', price: 200, desc: 'Captures a wild Hakma. Answer correctly for a big bonus.', kind: 'cube', rate: 1 },
   cube2:      { name: 'Prime Cube', price: 600, desc: 'A sharper cube with a better capture rate.', kind: 'cube', rate: 1.6, badge: 2 },
   cube3:      { name: 'Apex Cube', price: 1200, desc: 'Top-tier capture rate.', kind: 'cube', rate: 2.3, badge: 5 },
   tonic:      { name: 'Mend Tonic', price: 150, desc: 'Restores 30 HP.', kind: 'heal', amt: 30 },
   supertonic: { name: 'Super Tonic', price: 400, desc: 'Restores 90 HP.', kind: 'heal', amt: 90, badge: 2 },
   maxtonic:   { name: 'Max Tonic', price: 900, desc: 'Fully restores HP.', kind: 'heal', amt: 9999, badge: 4 },
-  revive:     { name: 'Revive Spark', price: 700, desc: 'Revives a fainted monster to half HP.', kind: 'revive' },
-  tm_logic:     { name: 'Disc: Proof by Induction', price: 2500, desc: 'Technique Disc. Teaches a monster Proof by Induction (Logic, 85).', kind: 'tm', type: 'logic', move: 'Proof by Induction', badge: 3 },
+  revive:     { name: 'Revive Spark', price: 700, desc: 'Revives a fainted Hakma to half HP.', kind: 'revive' },
+  tm_logic:     { name: 'Disc: Proof by Induction', price: 2500, desc: 'Technique Disc. Teaches a Hakma Proof by Induction (Logic, 85).', kind: 'tm', type: 'logic', move: 'Proof by Induction', badge: 3 },
   tm_cipher:    { name: 'Disc: Zero-Knowledge Strike', price: 2500, desc: 'Technique Disc. Teaches Zero-Knowledge Strike (Cipher, 85).', kind: 'tm', type: 'cipher', move: 'Zero-Knowledge Strike', badge: 3 },
   tm_spark:     { name: 'Disc: Overclock Surge', price: 2500, desc: 'Technique Disc. Teaches Overclock Surge (Spark, 85).', kind: 'tm', type: 'spark', move: 'Overclock Surge', badge: 3 },
   tm_data:      { name: 'Disc: Big Data Crash', price: 2500, desc: 'Technique Disc. Teaches Big Data Crash (Data, 85).', kind: 'tm', type: 'data', move: 'Big Data Crash', badge: 3 },
   tm_structure: { name: 'Disc: Foundation Quake', price: 2500, desc: 'Technique Disc. Teaches Foundation Quake (Structure, 85).', kind: 'tm', type: 'structure', move: 'Foundation Quake', badge: 3 },
   tm_flux:      { name: 'Disc: Refactor Blaze', price: 2500, desc: 'Technique Disc. Teaches Refactor Blaze (Flux, 85).', kind: 'tm', type: 'flux', move: 'Refactor Blaze', badge: 3 },
-  shard:      { name: 'Insight Shard', price: 0, desc: 'Very rare — one is awarded with each badge. Raises a monster by one level. Can\'t be used during battle.', kind: 'level' },
+  shard:      { name: 'Insight Shard', price: 0, desc: 'Very rare — one is awarded with each badge. Raises a Hakma by one level. Can\'t be used during battle.', kind: 'level' },
 };
 
 export function defaultSettings() { return { music: 0.55, sfx: 0.7, timer: false, timerV2: true, timerSec: 25, textSpeed: 2, every: true, showControls: true }; }
@@ -58,14 +58,14 @@ export const FIELD_SKILLS = {
   smash: { name: 'Smash', disc: 'Smash Disc', badge: 2, desc: 'Shatters cracked boulders in your way.' },
   teleport: { name: 'Teleport', disc: 'Teleport Disc', badge: 3, desc: 'Warp back to any town or area you have discovered — works anywhere, even indoors or in caves (Menu → Teleport).' },
   fly:   { name: 'Soar',  disc: 'Soar Disc',  badge: 4, desc: 'Fly instantly to any city you have visited (from the Region Map).' },
-  swim:  { name: 'Swim',  disc: 'Swim Disc',  badge: 5, desc: 'Ride your lead monster across open water to reach islands. Face water and press A.' },
+  swim:  { name: 'Swim',  disc: 'Swim Disc',  badge: 5, desc: 'Ride your lead Hakma across open water to reach islands. Face water and press A.' },
 };
 export const tmMove = (id) => ({ name: ITEMS[id].move, power: 85, type: ITEMS[id].type, kind: 'hit', lvl: 1, tm: true });
 export const movesOf = (W, m) => W.species[m.sp].moves.filter((mv) => mv.lvl <= m.lvl).concat((m.tms || []).filter((id) => ITEMS[id]).map(tmMove));
 export const lookOf = (m) => (m?.era || '') + (m?.shiny ? '*' : '');
 export const ERA_PREFIX = { past: 'Ancient ', future: 'Neo-' };
 export const monName = (W, m) => m.nick || (ERA_PREFIX[m.era] || '') + W.species[m.sp].name;
-// Status conditions. Flux moves can burn, Cipher moves can poison, Data moves can make a monster sick.
+// Status conditions. Flux moves can burn, Cipher moves can poison, Data moves can make a Hakma sick.
 // They last until healed at a Mend Station / home, or with any healing item.
 export const STATUS = {
   psn: { name: 'Poisoned', tag: 'PSN', col: '#b050e0', from: 'cipher', chance: 0.22, tick: 1 / 10, verb: 'was poisoned' },

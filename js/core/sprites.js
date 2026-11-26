@@ -2,14 +2,14 @@ import { TYPES } from '../content/types.js';
 function hexToHsl(hex) { const [r, g, b] = hexToRgb(hex).map((v) => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h = 0, sat = 0; const l = (mx + mn) / 2;
   if (mx !== mn) { const d = mx - mn; sat = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; }
   return [h, sat * 100, l * 100]; }
-// Procedural pixel art: monsters (with shading, outlines, type accessories), people, tiles, buildings, items.
+// Procedural pixel art: Hakma (with shading, outlines, type accessories), people, tiles, buildings, items.
 import { rng, hash, shade, mix, hsl, hexToRgb } from './rng.js';
 
 const cache = new Map();
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return [c, g]; };
 const OUT = '#14101c';
 
-// ---------------------------------------------------------------- MONSTERS
+// ---------------------------------------------------------------- HAKMA
 const PLANS = ['biped', 'quad', 'blob', 'serpent', 'bird', 'floater', 'drake', 'insect', 'golem', 'fish', 'quad', 'biped'];
 const TYPE_HUE = { logic: 212, cipher: 275, spark: 48, data: 140, structure: 26, flux: 8, normal: 0 };
 // era: undefined (present), 'past' (ancient form) or 'future' (future form)

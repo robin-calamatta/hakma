@@ -127,7 +127,7 @@ function profLab(W) {
   m.rect(1, 2, 3, 1, T.SHELF); m.rect(8, 2, 3, 1, T.SHELF); m.rect(4, 5, 5, 1, T.TABLE); m.set(1, 7, T.PLANT); m.set(10, 7, T.PLANT); m.set(10, 4, T.PC);
   m.objs.push(npc(6, 3, { kind: 'prof', name: W.profName, pal: { coat: true, hair: '#e0e0f0', shirt: '#3070d0' } }));
   W.starters.forEach((sid, i) => m.objs.push({ x: 4 + i * 2, y: 5, kind: 'starter', sp: sid, solidTile: true }));
-  m.objs.push(npc(2, 6, { name: 'Lab Aide', pal: { coat: true }, lines: ['The Professor studies how monsters grow when their trainers learn.', 'Every correct answer gives your monster bonus experience. Knowledge literally makes them stronger!'] }));
+  m.objs.push(npc(2, 6, { name: 'Lab Aide', pal: { coat: true }, lines: ['The Professor studies how Hakma grow when their trainers learn.', 'Every correct answer gives your Hakma bonus experience. Knowledge literally makes them stronger!'] }));
   Object.assign(m, { name: W.profName.split(' ').pop() + ' Lab', music: 'lab', ci: 0 });
   return m;
 }
@@ -214,7 +214,7 @@ function route(W, r) {
   }
   // signpost
   m.set(px[h - 4] - 1, h - 4, T.SIGN);
-  m.objs.push({ x: px[h - 4] - 1, y: h - 4, kind: 'sign', text: [`Route ${r}`, toCity !== null ? `North: ${zoneInfo(r).name}, then ${W.cities[toCity].name} — ${W.cities[toCity].theme}.` : `North: ${zoneInfo(r).name}, then the Mastery Summit.`, 'Tall grass hides wild monsters. Lost notes on this route preview what\'s ahead!'] });
+  m.objs.push({ x: px[h - 4] - 1, y: h - 4, kind: 'sign', text: [`Route ${r}`, toCity !== null ? `North: ${zoneInfo(r).name}, then ${W.cities[toCity].name} — ${W.cities[toCity].theme}.` : `North: ${zoneInfo(r).name}, then the Mastery Summit.`, 'Tall grass hides wild Hakma. Lost notes on this route preview what\'s ahead!'] });
   // ---- field-skill obstacles. Slice (from Leader 1) clears saplings; Smash (from Leader 3) breaks cracked boulders.
   // A wall only blocks the main road on routes you reach after earning that skill; pockets hide bonus items.
   const obst = [];
@@ -304,7 +304,7 @@ function zone(W, r) {
       carveWalk(m, R, gx + 2, gy + 2, 14, Math.min(h - 3, gy + 2 + R.int(-1, 1)), 1, T.PATH, 0.6); }
     for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) if (m.get(x, y) === T.PATH && R() < 0.12) { const dx = R() < 0.5 ? -1 : 1; if (m.get(x + dx, y) === T.TREE && x + dx > 2 && x + dx < w - 3) m.set(x + dx, y, T.TALL); }
     glades.forEach(([gx, gy], k) => { if (k === 1 || k === 3) item(gx + 4, gy + 1, loot(), k); if (k === 2) item(gx + 1, gy + 3, 'cube3', 9, true); if (k === 0 || k === 4) trainer(gx + 1, gy + 1, 'right', k); });
-    { const [gx, gy] = glades[2]; m.objs.push(npc(gx + 3, gy + 1, { name: Z.night ? 'Mist Watcher' : 'Forest Hermit', tips: [Z.night ? 'The mist hides many paths. Rare monsters wander here after dark.' : 'Every glade in these woods hides something. Explore off the main trail!', ...tipLines(W, ci, 16, 2)], pal: { coat: true, shirt: '#4a6a3a', hair: '#d8d8d8' } })); }
+    { const [gx, gy] = glades[2]; m.objs.push(npc(gx + 3, gy + 1, { name: Z.night ? 'Mist Watcher' : 'Forest Hermit', tips: [Z.night ? 'The mist hides many paths. Rare Hakma wander here after dark.' : 'Every glade in these woods hides something. Explore off the main trail!', ...tipLines(W, ci, 16, 2)], pal: { coat: true, shirt: '#4a6a3a', hair: '#d8d8d8' } })); }
   } else if (Z.kind === 'maze') {
     m = grid(w, h, Z.crystal ? T.ROCK : T.TREE); const cw = 14, chh = Math.floor((h - 5) / 2); const vis = new Set(); const C = (cx, cy) => [1 + cx * 2, 3 + cy * 2];
     const stack = [[7, chh - 1]]; vis.add('7,' + (chh - 1)); { const [x, y] = C(7, chh - 1); m.set(x, y, T.PATH); }
@@ -329,7 +329,7 @@ function zone(W, r) {
     link([14, h - 4], isl[0]); link(isl[0], isl[1]); link(isl[0], isl[2]); link(isl[1], isl[3]); link(isl[2], isl[3]); link(isl[3], isl[4]); link(isl[3], isl[5]); link(isl[5], isl[6]); link(isl[6], [14, 3]); link([15, h - 4], [15, h - 9]);
     for (let y = 0; y < h; y++) for (const x of [0, 1, w - 2, w - 1]) m.set(x, y, T.TREE); for (let x = 0; x < w; x++) { if (x < 13 || x > 16) { m.set(x, 0, T.TREE); m.set(x, h - 1, T.TREE); } }
     item(5, h - 31, loot(), 1); item(23, h - 18, loot(), 2); item(4, h - 16, 'cube3', 3, true);
-    m.objs.push(npc(13, h - 8, { name: Z.sky ? 'Sky Sailor' : 'Angler', tips: [Z.sky ? 'These bridges hang above the clouds. Don\'t look down!' : 'The fish here are huge… and so are the monsters on the islands!', ...tipLines(W, ci, 18, 2)], pal: { shirt: Z.sky ? '#a0c8ff' : '#3a6aa0', hat: '#e0d0a0' } }));
+    m.objs.push(npc(13, h - 8, { name: Z.sky ? 'Sky Sailor' : 'Angler', tips: [Z.sky ? 'These bridges hang above the clouds. Don\'t look down!' : 'The fish here are huge… and so are the Hakma on the islands!', ...tipLines(W, ci, 18, 2)], pal: { shirt: Z.sky ? '#a0c8ff' : '#3a6aa0', hat: '#e0d0a0' } }));
     trainer(21, h - 31, 'left', 0); trainer(5, h - 16, 'right', 1);
     // islands with no bridges — only reachable with Swim
     if (!Z.sky) { m.rect(25, h - 12, 3, 3, T.GRASS); m.rect(3, h - 11, 3, 3, T.GRASS); item(26, h - 11, 'cube3', 4); item(4, h - 10, 'maxtonic', 5); m.set(25, h - 12, T.TALL); m.set(5, h - 9, T.TALL); m.swimIsles = true; }
@@ -350,7 +350,7 @@ function zone(W, r) {
     m.rect(13, 2, 4, h - 4, T.PATH);
     for (let k = 0; k < 4; k++) { const y0 = 5 + k * 8; m.rect(6, y0, 18, 5, T.PATH); for (const x of [6, 23]) for (const y of [y0, y0 + 4]) m.set(x, y, T.STATUE); for (let x = 8; x < 22; x += 3) if (x !== 14 && x !== 13 && x !== 16) m.set(x, y0 + 2, T.ROCK); }
     for (let k = 0; k < 6; k++) { const pw = R.int(3, 5), ph = R.int(2, 3), x0 = R.int(4, w - 4 - pw), y0 = R.int(3, h - 5 - ph); for (let y = y0; y < y0 + ph; y++) for (let x = x0; x < x0 + pw; x++) if (m.get(x, y) === T.GRASS) m.set(x, y, T.TALL); }
-    const lore = ['An ancient tablet: "Knowledge is the only treasure that grows when shared."', 'A worn carving shows scholars teaching monsters to read.', 'The tablet reads: "Those who ask questions find the hidden doors."'];
+    const lore = ['An ancient tablet: "Knowledge is the only treasure that grows when shared."', 'A worn carving shows scholars teaching Hakma to read.', 'The tablet reads: "Those who ask questions find the hidden doors."'];
     [[9, 7], [20, 15], [9, 23]].forEach(([x, y], k) => { m.set(x, y, T.SIGN); m.objs.push({ x, y, kind: 'sign', text: [lore[k]] }); });
     item(20, 31, loot(), 1); item(8, 15, loot(), 2); item(22, 7, 'cube3', 3, true);
     trainer(10, 31, 'right', 0); trainer(19, 23, 'left', 1);
@@ -459,7 +459,7 @@ function sea(W) {
   const roles = ['turtle', 'light', 'coral', 'treasure']; if (SEED) for (let k = roles.length - 1; k > 0; k--) { const j = R.int(0, k); [roles[k], roles[j]] = [roles[j], roles[k]]; }
   const dirName = (k) => ['north-west', 'north-east', 'south-west', 'south-east'][k]; const where = (role) => dirName(roles.indexOf(role));
   isles.forEach(([x0, y0, iw, ih], k) => { const role = roles[k];
-    if (role === 'turtle') { m.objs.push(npc(x0 + 4, y0 + 2, { name: 'Old Turtle Keeper', tips: ['Welcome to Turtle Isle! Few trainers can swim this far.', `Coral Atoll lies to the ${where('coral')} — full of rare monsters. The lighthouse (${where('light')}) keeps sailors safe… and hides a secret.`, ...tipLines(W, 4, 23, 1)], pal: { coat: true, shirt: '#3a8a6a', hair: '#e0e0e0' } })); m.objs.push({ x: x0 + 6, y: y0 + 4, kind: 'item', item: 'maxtonic', count: 2, key: 'seai0' }); m.arrive = [x0 + 4, y0 + 3]; }
+    if (role === 'turtle') { m.objs.push(npc(x0 + 4, y0 + 2, { name: 'Old Turtle Keeper', tips: ['Welcome to Turtle Isle! Few trainers can swim this far.', `Coral Atoll lies to the ${where('coral')} — full of rare Hakma. The lighthouse (${where('light')}) keeps sailors safe… and hides a secret.`, ...tipLines(W, 4, 23, 1)], pal: { coat: true, shirt: '#3a8a6a', hair: '#e0e0e0' } })); m.objs.push({ x: x0 + 6, y: y0 + 4, kind: 'item', item: 'maxtonic', count: 2, key: 'seai0' }); m.arrive = [x0 + 4, y0 + 3]; }
     if (role === 'light') { m.rect(x0 + 1, y0 + 2, 3, 3, T.TALL); m.objs.push({ x: x0 + 6, y: y0 + 2, kind: 'ride', ride: 'lighthouse', decor: true }); m.set(x0 + 5, y0 + 5, T.SIGN); m.objs.push({ x: x0 + 5, y: y0 + 5, kind: 'sign', text: ['Lighthouse Isle', `The keeper left a note: "Treasure lies on the ${where('treasure')} isle."`] }); m.objs.push({ x: x0 + 2, y: y0 + ih - 2, kind: 'item', item: 'cube3', count: 1, key: 'seai1' }); }
     if (role === 'coral') { m.rect(x0 + 1, y0 + 1, iw - 4, ih - 3, T.TALL); m.objs.push({ x: x0 + iw - 2, y: y0 + ih - 2, kind: 'item', hidden: true, walkable: true, item: 'cube3', count: 1, key: 'seah' }); }
     if (role === 'treasure') { m.set(x0 + 4, y0 + 1, T.SIGN); m.objs.push({ x: x0 + 4, y: y0 + 1, kind: 'sign', text: ['Treasure Isle', 'X marks the spot… three times!'] }); [[x0 + 2, y0 + 3], [x0 + 4, y0 + 4], [x0 + 6, y0 + 5]].forEach(([x, y], j) => m.objs.push({ x, y, kind: 'item', item: ['cube3', 'revive', 'maxtonic'][j], count: j ? 2 : 1, key: 'seaX' + j })); }
@@ -497,14 +497,14 @@ function garden(W, i) {
   for (let x = 0; x < 9; x++) m.set(x, 7, T.PATH);
   const back = SEED ? getMap(W, 'city' + i).gardenBack : [37, 15];
   m.warps.push({ x: 0, y: 7, to: `city${i}`, tx: back[0], ty: back[1], dir: 'down' });
-  m.set(8, 5, T.SIGN); m.objs.push({ x: 8, y: 5, kind: 'sign', text: ['Secret Garden', 'Rare and Epic monsters love quiet places like this. Shimmering Prismatic ones appear more often in secret spots!'] });
-  m.objs.push(npc(9, 9, { name: 'Gardener', tips: [`I keep notes on monster rarity: ★ Common, ★★ Uncommon, ★★★ Rare, ★★★★ Epic.`, 'Legends say four ★★★★★ Legendary guardians hide in lairs along the odd-numbered routes — look for gaps in the trees.', `And a ★★★★★★ Mythic sleeps beneath ${HOMETOWN}… but only for a true master.`], pal: { shirt: '#5a9a3a', hat: '#d8b040' } }));
+  m.set(8, 5, T.SIGN); m.objs.push({ x: 8, y: 5, kind: 'sign', text: ['Secret Garden', 'Rare and Epic Hakma love quiet places like this. Shimmering Prismatic ones appear more often in secret spots!'] });
+  m.objs.push(npc(9, 9, { name: 'Gardener', tips: [`I keep notes on Hakma rarity: ★ Common, ★★ Uncommon, ★★★ Rare, ★★★★ Epic.`, 'Legends say four ★★★★★ Legendary guardians hide in lairs along the odd-numbered routes — look for gaps in the trees.', `And a ★★★★★★ Mythic sleeps beneath ${HOMETOWN}… but only for a true master.`], pal: { shirt: '#5a9a3a', hat: '#d8b040' } }));
   m.objs.push({ x: 17, y: 3, kind: 'item', item: R.pick(['cube2', 'supertonic', 'revive']), count: 2, key: `gd${i}i` });
   m.objs.push({ x: 15, y: 11, kind: 'item', hidden: true, walkable: true, item: 'cube3', count: 1, key: `gd${i}h` });
   Object.assign(m, { name: `${W.cities[i].name} Secret Garden`, kind: 'route', biome: cityBiome(W, i), music: 'mystic', ci: i, encounter: Math.min(i + 2, 9), encRate: 1.3, secret: true });
   return m;
 }
-// ------------------------------------------------------------ hidden groves (optional side areas with rarer monsters)
+// ------------------------------------------------------------ hidden groves (optional side areas with rarer Hakma)
 const hasGrove = (r) => r >= 2 && r <= 8;
 const groveRow = (W, r) => { const { h, px } = routeLayout(W, r); for (let k = 0; k < 40; k++) { const y = Math.floor(h * 0.2) + (hash(W.id + SEED + 'gr' + r + k) % Math.floor(h * 0.25)); if (px[y - 1] === px[y] && px[y + 1] === px[y]) return y; } return Math.floor(h * 0.3); };
 function grove(W, r) {
@@ -517,7 +517,7 @@ function grove(W, r) {
   for (let x = 1; x < w - 1; x++) if (m.get(x, 10) === T.TREE) m.set(x, 10, T.PATH);
   m.rect(9, 6, 6, 8, T.GRASS); m.rect(8, 9, 8, 3, T.PATH);
   m.rect(R.int(3, 6), R.int(3, 5), 3, 2, T.WATER); scatter(m, R, 18, [T.FLOWER, T.FLOWER, T.TREE, T.ROCK], (x, y) => y >= 9 && y <= 11);
-  m.set(11, 7, T.SIGN); m.objs.push({ x: 11, y: 7, kind: 'sign', text: [`Hidden Grove`, 'Rarer, stronger monsters live in this deep grass. Few trainers ever find this place!'] });
+  m.set(11, 7, T.SIGN); m.objs.push({ x: 11, y: 7, kind: 'sign', text: [`Hidden Grove`, 'Rarer, stronger Hakma live in this deep grass. Few trainers ever find this place!'] });
   m.objs.push(npc(13, 8, { name: 'Grove Keeper', tips: tipLines(W, Math.min(r - 1, 7), 9, 3), pal: { coat: true, shirt: '#3a8a5a', hair: '#e0e0e0' } }));
   const prizes = ['supertonic', 'revive', 'maxtonic', 'cube2', 'tm_' + R.pick(['logic', 'cipher', 'spark', 'data', 'structure', 'flux'])];
   [[4, 15], [19, 4], [18, 15]].forEach(([x, y], k) => { m.set(x, y, T.GRASS); m.objs.push({ x, y, kind: 'item', item: k === 2 && r >= 4 ? prizes[4] : R.pick(prizes.slice(0, 4)), count: 1, key: `gv${r}i${k}` }); for (const [ax, ay] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) if (m.get(ax, ay) === T.TREE) m.set(ax, ay, T.TALL); });
@@ -536,7 +536,7 @@ function eraMap(W, era) {
   for (const x of [6, 23]) for (const y of [3, 9]) m.set(x, y, past ? T.ROCK : T.FENCE);
   m.rect(3, 13, 9, 6, T.TALL); m.rect(18, 13, 9, 6, T.TALL); m.rect(3, 22, 9, 7, T.TALL); m.rect(18, 22, 9, 7, T.TALL);
   scatter(m, R, 26, past ? [T.TREE, T.FLOWER, T.ROCK] : [T.FLOWER, T.FLOWER, T.FENCE], (x, y) => (x >= 12 && x <= 17) || y <= 11 || y >= h - 5 || (y >= 19 && y <= 21));
-  m.set(12, 10, T.SIGN); m.objs.push({ x: 12, y: 10, kind: 'sign', text: [`${set.name} — ${set.years}`, past ? 'The air smells of old paper and machine oil. Monsters here wear their *Ancient* forms.' : 'Neon light hums everywhere. Monsters here have evolved *Neo-* forms.', 'Step on the time portal at the south end to return to the present.'] });
+  m.set(12, 10, T.SIGN); m.objs.push({ x: 12, y: 10, kind: 'sign', text: [`${set.name} — ${set.years}`, past ? 'The air smells of old paper and machine oil. Hakma here wear their *Ancient* forms.' : 'Neon light hums everywhere. Hakma here have evolved *Neo-* forms.', 'Step on the time portal at the south end to return to the present.'] });
   m.objs.push(npc(10, 4, { kind: 'nurse', name: past ? 'Apothecary' : 'Med-Bot', dir: 'down', pal: { coat: true, shirt: past ? '#8a5a30' : '#30d0e0', hair: past ? '#504030' : '#c0f8ff' } }));
   m.objs.push(npc(19, 4, { name: past ? 'Historian' : 'Futurist', lines: [...set.facts, 'Battle here and you\'ll be quizzed on this era too!'], pal: { coat: past, shirt: past ? '#704020' : '#4040ff', hair: past ? '#909090' : '#ff40d0' } }));
   m.objs.push({ x: 17, y: 7, kind: 'rift' });

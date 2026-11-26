@@ -58,7 +58,7 @@ export class World {
     if (o.kind === 'trainer' || o.kind === 'guard') base.hat = base.hat ?? (o.kind === 'guard' ? '#305070' : undefined);
     return personPalette(hash(this.map.id + i + (o.name || '')), base);
   }
-  // ---- partner monster that walks one tile behind player 1 (like the yellow mouse in a certain classic)
+  // ---- partner Hakma that walks one tile behind player 1 (like the yellow mouse in a certain classic)
   followMon() { const s = G.save; if (!s || !s.follower) return null; return s.players[0]?.party.find((m) => m.uid === s.follower) || null; }
   initFollower() {
     const p = this.lp[0]; const mon = this.followMon(); if (!p || !mon) { this.fol = null; return; }

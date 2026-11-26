@@ -20,7 +20,7 @@ export async function trial(ci, practice = false) {
   if (practice) { S().money += score * 20; await ui.say(`Practice score: *${score}/${n}*. Earned ¤${score * 20}.`, { name: 'Lab Keeper' }); return; }
   if (score >= 6) {
     S().flags['trial' + ci] = 1; S().bag.cube = (S().bag.cube || 0) + 3; S().money += 300; audio.sfx('badge');
-    await ui.say([`*${score}/${n}* — you passed the ${c.name} Trial!`, 'The Mastery Hall will now admit you. Take 3 Capture Cubes and ¤300 too.', `Tip: Leader ${c.leader} favors ${c.type}-type monsters.`], { name: 'Lab Keeper' });
+    await ui.say([`*${score}/${n}* — you passed the ${c.name} Trial!`, 'The Mastery Hall will now admit you. Take 3 Capture Cubes and ¤300 too.', `Tip: Leader ${c.leader} favors ${c.type}-type Hakma.`], { name: 'Lab Keeper' });
   } else await ui.say([`*${score}/${n}*. You need 6 to pass.`, 'Talk to people around town, read your Codex, try the stations, then come back!'], { name: 'Lab Keeper' });
   G.autosave?.(); G.events.checkObjective();
 }

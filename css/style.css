@@ -304,3 +304,5 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 .qx-q { margin-top: 2px; }
 .qx-a { margin-top: 2px; }
 .qx .qcode { font-size: .9em; }
+
+#buildtag { position: fixed; left: 8px; bottom: 6px; z-index: 30; font-size: 11px; color: rgba(255,255,255,.45); pointer-events: none; }

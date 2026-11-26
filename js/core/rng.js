@@ -1,4 +1,4 @@
-// Deterministic helpers used everywhere (maps, monsters, music are seeded so every player sees the same world).
+// Deterministic helpers used everywhere (maps, Hakma, music are seeded so every player sees the same world).
 export function hash(str) {
   let h = 2166136261 >>> 0;
   str = String(str);

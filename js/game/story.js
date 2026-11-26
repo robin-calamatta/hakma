@@ -57,7 +57,7 @@ export async function onTrainerBeaten(o, mate) {
 async function hqVictory(i) {
   const s = S(); const w = W(); if (s.flags.synbadge) return; s.flags.synbadge = 1;
   await say(['Vex: …Fine. The Static Syndicate is through.', 'Vex: Take my partner. It never liked working for me anyway.'], 'Kingpin Vex');
-  // a fierce, rare, shimmering final-form monster
+  // a fierce, rare, shimmering final-form Hakma
   const finals = Object.values(w.species).filter((sp) => sp.stage === sp.stages - 1 && sp.stages > 1 && !['legendary', 'mythic'].includes(sp.rarity));
   const pick = finals.sort((a, b) => hash(worldSeed() + a.id) - hash(worldSeed() + b.id)).find((sp) => sp.rarity === 'epic') || finals[0];
   if (pick) { const lvl = Math.max(...s.players.flatMap((p) => p.party.map((m) => m.lvl)), 20) + 2; const mon = makeMon(w, pick.id, lvl); mon.shiny = true; mon.nick = null; const where = addMon(s, 0, mon); s.caught[pick.id] = 1; s.seen[pick.id] = 1;
@@ -68,13 +68,13 @@ async function hqVictory(i) {
 
 // ------------------------------------------------------------ side quests
 const QT = [
-  { t: 'catch', need: 1, text: (q) => `Could you catch a ${TYPES[q.type]?.name || q.type}-type monster? I've always wanted to see one up close.`, prog: (q) => (Object.keys(S().caught).some((id) => W().species[id]?.type === q.type) ? 1 : 0) },
+  { t: 'catch', need: 1, text: (q) => `Could you catch a ${TYPES[q.type]?.name || q.type}-type Hakma? I've always wanted to see one up close.`, prog: (q) => (Object.keys(S().caught).some((id) => W().species[id]?.type === q.type) ? 1 : 0) },
   { t: 'defeat', need: 5, text: () => 'Win 5 trainer battles and come tell me about it. I need some inspiration!', prog: (q) => q.n || 0 },
   { t: 'answer', need: 20, text: () => 'Answer 20 questions correctly in battle. Knowledge is power, right?', prog: (q) => q.n || 0 },
-  { t: 'fetch', need: 3, text: () => 'My monsters are worn out. Could you bring me 3 Mend Tonics?', prog: () => S().bag.tonic || 0 },
+  { t: 'fetch', need: 3, text: () => 'My Hakma are worn out. Could you bring me 3 Mend Tonics?', prog: () => S().bag.tonic || 0 },
   { t: 'visit', need: 1, text: (q) => `Have you been to ${zoneInfo(q.zone)?.name || 'the wilds'}? Go there and tell me what it's like!`, prog: (q) => (S().flags['zvisit' + q.zone] ? 1 : 0) },
   { t: 'lessons', need: 3, text: (q) => `Read 3 lessons at the ${cityName(q.ci)} Academy. Trust me, it helps.`, prog: (q) => Object.keys(S().read || {}).filter((k) => k.startsWith(q.ci + ':')).length },
-  { t: 'pet', need: 5, text: () => 'Monsters love affection. Pet your partner 5 times — just walk up to it and press A!', prog: () => S().players.flatMap((p) => p.party).reduce((a, m) => a + (m.pets || 0), 0) - (S().sq?.__petBase || 0) },
+  { t: 'pet', need: 5, text: () => 'Hakma love affection. Pet your partner 5 times — just walk up to it and press A!', prog: () => S().players.flatMap((p) => p.party).reduce((a, m) => a + (m.pets || 0), 0) - (S().sq?.__petBase || 0) },
   { t: 'bounty', need: 4, text: () => 'Bounty: defeat 4 Static Syndicate grunts anywhere in the region.', prog: (q) => q.n || 0 },
 ];
 const REWARDS = [['cube2', 3], ['supertonic', 3], ['maxtonic', 1], ['revive', 2], ['cube3', 1]];
@@ -109,7 +109,7 @@ async function shopPanel(title, ids, mult = 1) {
 async function mallShop(o) {
   const b = badgeCount(S());
   if (o.shop === 'mart') return G.menus.shop();
-  if (o.shop === 'food') { await say('Welcome to the Food Court! A hearty meal for your whole team is ¤150.', o.name); if ((await ui.choose('Buy a team meal (¤150)?', ['Yes please', 'No thanks'])) === 0 && pay(150)) { healAll(W(), S()); audio.sfx('heal'); await say('Your monsters chowed down. Everyone is fully restored!', o.name); } return; }
+  if (o.shop === 'food') { await say('Welcome to the Food Court! A hearty meal for your whole team is ¤150.', o.name); if ((await ui.choose('Buy a team meal (¤150)?', ['Yes please', 'No thanks'])) === 0 && pay(150)) { healAll(W(), S()); audio.sfx('heal'); await say('Your Hakma chowed down. Everyone is fully restored!', o.name); } return; }
   if (o.shop === 'books') { const terms = W().cities[Math.min(7, G.world.map.ci || 0)].terms; const T = terms[R.int(0, terms.length - 1)]; await say(['You flip through a study guide…', `*${T.term}* — ${T.def}`], o.name); return; }
   if (o.shop === 'bazaar') { const day = new Date().toDateString(); const pool = ['cube3', 'maxtonic', 'revive', 'cube2', ...SHOPS.tms]; const ids = [0, 1, 2].map((k) => pool[hash(day + worldSeed() + k) % pool.length]).filter((v, k, a) => a.indexOf(v) === k); await say('Rare wares from far away! My stock changes every day.', o.name); return shopPanel('Ember Bazaar', ids, 1.1); }
   const ids = (SHOPS[o.shop] || []).filter((id) => (ITEMS[id].badge || 0) <= b || o.shop === 'fish' || o.shop === 'farm');
@@ -145,12 +145,12 @@ export const storyHandlers = {
     await say('Howdy, stranger. What\'ll it be?', o.name);
     const c = await ui.choose('Saloon menu', ['🥤 Sarsaparilla — heals your team (¤80)', '⚡ Prairie Fizz — +1 attack next battle (¤120)', '🌵 Cactus Cooler — cures conditions (¤60)', 'Just looking']);
     if (c === 0 && pay(80)) { for (const p of S().players) for (const m of p.party) if (m.hp > 0) m.hp = Math.min(maxHp(W(), m), m.hp + Math.ceil(maxHp(W(), m) / 2)); audio.sfx('heal'); await say('You slide a frosty sarsaparilla down the bar. Your team perks right up!', o.name); }
-    if (c === 1 && pay(120)) { S().flags.fizz = 1; audio.sfx('boost'); await say('That Prairie Fizz has a kick! Your monsters will hit harder in the next battle.', o.name); }
+    if (c === 1 && pay(120)) { S().flags.fizz = 1; audio.sfx('boost'); await say('That Prairie Fizz has a kick! Your Hakma will hit harder in the next battle.', o.name); }
     if (c === 2 && pay(60)) { for (const p of S().players) for (const m of p.party) delete m.status; audio.sfx('heal'); await say('Cool and refreshing. Any poison, burns or sickness are gone.', o.name); }
   },
   async sheriff(o) { await say(['These Syndicate outlaws have been runnin\' wild. I could use a deputy.'], o.name); return questGiver({ ...o, qid: `q${G.world.map.ci}_sh` }); },
   async cocoa(o) { await say('Cold out there! Hot cocoa warms everyone up — on the house.', o.name); healAll(W(), S()); audio.sfx('heal'); await say('Your team sips cocoa by the fire. Fully restored!', o.name); },
-  async milk(o) { await say('Fresh milk, straight from the barn! It\'ll put the bounce back in your monsters.', o.name); if ((await ui.choose('Buy a bottle for the team (¤50)?', ['Yes', 'No'])) === 0 && pay(50)) { healAll(W(), S()); audio.sfx('heal'); await say('Mmm! Everyone is fully restored.', o.name); } },
+  async milk(o) { await say('Fresh milk, straight from the barn! It\'ll put the bounce back in your Hakma.', o.name); if ((await ui.choose('Buy a bottle for the team (¤50)?', ['Yes', 'No'])) === 0 && pay(50)) { healAll(W(), S()); audio.sfx('heal'); await say('Mmm! Everyone is fully restored.', o.name); } },
   async spring(o) { await say('Take a soak — the minerals heal anything.', o.name); healAll(W(), S()); for (const p of S().players) for (const m of p.party) delete m.status; audio.sfx('heal'); await say('Ahh… Your team is fully healed and refreshed.', o.name); },
   async cablecar(o) {
     const s = S(); const opts = W().cities.map((c, k) => ({ c, k })).filter(({ k }) => k !== o.ci && s.flags['visit' + k]);
@@ -159,7 +159,7 @@ export const storyHandlers = {
     await say('All aboard! Enjoy the view.', o.name); await G.events.fly('city' + opts[c].k);
   },
   async vr(o) {
-    await say(['Welcome to the VR Arena! Fight a simulated trainer at your level.', 'No credits here — but your monsters earn real experience.'], o.name);
+    await say(['Welcome to the VR Arena! Fight a simulated trainer at your level.', 'No credits here — but your Hakma earn real experience.'], o.name);
     if ((await ui.choose('Start a simulation?', ['Jack in!', 'Not now'])) !== 0) return;
     const w = W(); const lvl = Math.max(...S().players[0].party.map((m) => m.lvl)); const team = w.makeTeam(hash(Date.now() + 'vr'), w.routeLines(Math.min(9, (G.world.map.ci || 0) + 1)), 3, lvl);
     const r = await runBattle({ kind: 'trainer', enemies: team, trainerTitle: 'Sim Trainer', trainerPal: { shirt: '#4cf0ff', hat: '#202040', skin: '#9fe8ff' }, money: 0, qci: G.world.map.ci || 0, biome: 'neon', music: 'battle' });

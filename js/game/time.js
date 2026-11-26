@@ -127,7 +127,7 @@ export const timeHandlers = {
       audio.sfx('evolve'); await G.world.warp('hometown', gate.x, gate.y + 1, 'down'); return;
     }
     if (badgeCount(s) < 4) { await say(['An ancient stone gate. Strange symbols — some old, some impossibly new — flicker across it.', 'It hums faintly, as if waiting for a trainer with *4 badges*.'], 'Chrono Gate'); return; }
-    if (!s.flags.chrono) { s.flags.chrono = 1; await say(['The gate blazes to life! Through it you glimpse two worlds…', `⏪ *${set.past.name}* — how ${W().topic.name} began.`, `⏩ *${set.future.name}* — where it is heading.`, 'Monsters there have taken on *era forms*. Catch them all!'], 'Chrono Gate'); }
+    if (!s.flags.chrono) { s.flags.chrono = 1; await say(['The gate blazes to life! Through it you glimpse two worlds…', `⏪ *${set.past.name}* — how ${W().topic.name} began.`, `⏩ *${set.future.name}* — where it is heading.`, 'Hakma there have taken on *era forms*. Catch them all!'], 'Chrono Gate'); }
     const c = await ui.choose('Where in time will you travel?', [`⏪ The Past — ${esc(set.past.name)} (${esc(set.past.years)})`, `⏩ The Future — ${esc(set.future.name)}`, 'Stay in the present']);
     if (c !== 0 && c !== 1) return; const era = c === 0 ? 'past' : 'future';
     audio.sfx('evolve'); await ui.fade(true, 500); await G.world.warp('era_' + era, 14, 33, 'up'); await ui.fade(false, 400);

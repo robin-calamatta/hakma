@@ -15,7 +15,7 @@ const CLASSES = { tech: ['Intern', 'Junior Dev', 'Analyst', 'SRE', 'Ops Ranger',
 
 const worlds = {};
 export const topics = () => TOPICS;
-// per-save seed: reshuffles which wild monsters live where, their rarities and the legend names (empty = legacy)
+// per-save seed: reshuffles which wild Hakma live where, their rarities and the legend names (empty = legacy)
 let CSEED = '';
 export function setContentSeed(s) { CSEED = s || ''; }
 function shuffleSeeded(arr, seed) { const r = rng(seed); const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -232,7 +232,7 @@ function pickQuestion(W, ci, save, opt) {
   return fresh(Q);
 }
 
-// ------------------------------------------------------------ generated monsters from glossary terms
+// ------------------------------------------------------------ generated Hakma from glossary terms
 const SUFFIX = [['let', 'ling', 'kin', 'bit', 'pip', 'ix', 'ette', 'ipup'], ['ore', 'ex', 'ara', 'on', 'ite', 'oid', 'ark', 'ox'], ['zilla', 'tron', 'saur', 'naut', 'gon', 'rex', 'lord', 'mancer', 'titan', 'wyrm']];
 const MOVES = {
   logic: [['Logic Jab', 'Bit Shift', 'Proof Beam', 'Recursion Ray'], ['Focus Loop', 'Think Ahead', 'Optimise', 'Deduce'], ['Branch Strike', 'Algorithm Arc', 'Theorem Lance', 'Inference Storm']],

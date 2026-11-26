@@ -244,7 +244,7 @@ export const parkHandlers = {
       await ui.say([n >= 6 ? '🎢 WHEEE! You rode the whole Quiz Coaster!' : `The coaster screeches to a stop after ${n} loop${n === 1 ? '' : 's'}.`, ...prize('coaster', 0, n, 6, 'the Quiz Coaster')]); return;
     }
     if (o.ride === 'carousel') {
-      await ui.say(['Round and round you go on a painted monster…']); audio.sfx('heal');
+      await ui.say(['Round and round you go on a painted Hakma…']); audio.sfx('heal');
       s.players.forEach((p) => p.party.forEach((m) => healMon(W(), m))); await ui.say('Your team feels completely refreshed!'); G.autosave?.(); return;
     }
     if (o.ride === 'tent') {

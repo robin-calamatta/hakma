@@ -20,7 +20,7 @@ import { storyHandlers, scenarioDesc } from './story.js';
 import { scenActive, scenOf } from './places.js';
 
 const LEAD = ['Here\'s something worth knowing:', 'Pro tip:', 'Interviewers love this one:', 'I wrote this down in my notes:', 'Remember this:', 'Fun fact:'];
-const TRAINER_LINES = ['Let\'s see what you\'ve learned!', 'My monsters study every night. Do yours?', 'Answer fast or get flattened!', 'I just read the docs on this. Bring it!', 'Knowledge check! Ready?', 'You look like you need some practice!'];
+const TRAINER_LINES = ['Let\'s see what you\'ve learned!', 'My Hakma study every night. Do yours?', 'Answer fast or get flattened!', 'I just read the docs on this. Bring it!', 'Knowledge check! Ready?', 'You look like you need some practice!'];
 const T_WIN = ['Ugh, you really know your stuff.', 'I need to go back to the books...', 'Okay, okay. You studied.', 'Next time I\'ll know the answers!'];
 
 const say = (lines, name) => ui.say(lines, { name });
@@ -40,7 +40,7 @@ export const events = {
   },
   async gateBlocked(m, p) {
     G.busy++;
-    if (m.gateNorth.flag === 'starter') await say([`Wait! The tall grass is full of wild monsters.`, `Go see ${W().profName} in the lab first and get a partner.`], 'Ranger');
+    if (m.gateNorth.flag === 'starter') await say([`Wait! The tall grass is full of wild Hakma.`, `Go see ${W().profName} in the lab first and get a partner.`], 'Ranger');
     else { const c = W().cities[m.gateNorth.badge]; await say([`Only trainers holding the *${c.badge}* may travel north.`, `Leader ${c.leader} at the ${c.name} Mastery Hall awards it.`], 'Gatekeeper'); }
     G.world.lp.forEach((q) => { q.dir = 'down'; });
     G.busy--;
@@ -88,7 +88,7 @@ export const events = {
     G.busy++;
     try {
       const cut = tile === T.CUTTREE; const key = cut ? 'cut' : 'smash'; const sk = FIELD_SKILLS[key]; const nth = ['1st', '2nd', '3rd', '4th', '5th'][sk.badge];
-      if (!S().skills[key]) { await say(cut ? ['A thick sapling blocks the way.', `A monster using *${sk.name}* could cut it down. The ${sk.disc} is awarded by the ${nth} Mastery Hall Leader.`] : ['A huge cracked boulder blocks the way.', `A monster using *${sk.name}* could shatter it. The ${sk.disc} is awarded by the ${nth} Mastery Hall Leader.`]); return; }
+      if (!S().skills[key]) { await say(cut ? ['A thick sapling blocks the way.', `A Hakma using *${sk.name}* could cut it down. The ${sk.disc} is awarded by the ${nth} Mastery Hall Leader.`] : ['A huge cracked boulder blocks the way.', `A Hakma using *${sk.name}* could shatter it. The ${sk.disc} is awarded by the ${nth} Mastery Hall Leader.`]); return; }
       if (!(await ui.confirm(cut ? `This sapling could be cut down. Use ${sk.name}?` : `This boulder is cracked. Use ${sk.name}?`))) return;
       const p = S().players[pi] || S().players[0]; const m = p.party.find((q) => q.hp > 0) || p.party[0];
       await say(`${m ? monName(W(), m) : p.name} used *${sk.name}*!`);
@@ -103,9 +103,9 @@ export const events = {
     G.busy++; let go = false;
     try {
       const sk = FIELD_SKILLS.swim;
-      if (!S().skills.swim) { await say(['The water is deep and blue.', `A monster could carry you across with *${sk.name}*. The ${sk.disc} is awarded by the 6th Mastery Hall Leader.`]); return; }
+      if (!S().skills.swim) { await say(['The water is deep and blue.', `A Hakma could carry you across with *${sk.name}*. The ${sk.disc} is awarded by the 6th Mastery Hall Leader.`]); return; }
       const pl = S().players[p.i || 0] || S().players[0]; const m = pl.party.find((q) => q.hp > 0);
-      if (!m) { await say('None of your monsters are fit to swim.'); return; }
+      if (!m) { await say('None of your Hakma are fit to swim.'); return; }
       if (!(await ui.confirm(`The water looks calm. Ride ${monName(W(), m)} and Swim?`))) return;
       await say(`${monName(W(), m)} used *Swim*! Hop on!`); audio.sfx('blip'); go = true;
     } finally { G.busy--; }
@@ -197,7 +197,7 @@ const hereHint = (mapPred, kind, label) => { if (NOHINT) return ''; const m = G.
 export function objective() {
   const s = S(); const w = W(); if (!s) return '';
   if (!s.flags.topic) return 'Choose your field of study at the terminal on your desk.';
-  if (!s.flags.starter) return `Visit ${w.profName}'s lab and choose a partner monster.${hereHint((m) => m.id === 'hometown', 'prof', 'the lab')}`;
+  if (!s.flags.starter) return `Visit ${w.profName}'s lab and choose a partner Hakma.${hereHint((m) => m.id === 'hometown', 'prof', 'the lab')}`;
   for (let i = 0; i < 8; i++) {
     if (s.badges[i]) continue; const c = w.cities[i];
     if (!s.flags['visit' + i]) return `Travel north to ${c.name} (${c.theme}).`;
@@ -216,7 +216,7 @@ export function questList() {
     if (!s.flags['visit' + i]) break; const c = w.cities[i];
     const notes = [0, 1, 2].filter((k) => s.taken[`r${i + 1}n${k}`]).length;
     out.push({ title: `${c.name}: Lost Notes`, desc: `Find the 3 lost notes on Route ${i + 1}. (${notes}/3)`, done: notes >= 3 });
-    const li = researchLine(i); out.push({ title: `${c.name}: Field Research`, desc: `Capture a ${w.lines[li].names[0]}-line monster for the Field Researcher.`, done: !!s.flags['research' + i], ready: lineCaught(li) && !s.flags['research' + i] });
+    const li = researchLine(i); out.push({ title: `${c.name}: Field Research`, desc: `Capture a ${w.lines[li].names[0]}-line Hakma for the Field Researcher.`, done: !!s.flags['research' + i], ready: lineCaught(li) && !s.flags['research' + i] });
     out.push({ title: `${c.name}: Study Stations`, desc: 'Complete the Match, Sequence and Speed stations in the Study Lab.', done: ['match', 'sequence', 'speed'].every((g) => s.flags[`st_${g}${i}`]) });
     out.push({ title: `${c.name}: Mentor's Gift`, desc: 'Visit the house and talk to the Mentor.', done: !!s.flags['gift' + i] });
   }
@@ -290,12 +290,12 @@ const handlers = {
     const s = S(), w = W(), t = w.topic;
     if (!s.flags.topic) { await say(['Ah, you haven\'t picked a field of study yet!', 'Use the terminal on your desk at home.'], w.profName); return; }
     if (!s.flags.starter) {
-      if (!s.flags.profIntro) { s.flags.profIntro = 1; await say([`Welcome! I'm ${w.profName}. So you've chosen *${t.name}*!`, `In the ${w.region}, monsters are born from ideas. Each one embodies a concept from ${t.name}.`, 'They grow stronger when their trainer understands what they embody.', 'In battle you command attacks by answering questions. Right answers hit. Fast answers crit. Wrong answers teach you something.', `${w.cities.length} cities lie north, each teaching a deeper level of ${t.name}. Master them all and you'll be ready for anything — even an interview!`, 'Now — choose your partner from the three capsules on the table.'], w.profName); }
+      if (!s.flags.profIntro) { s.flags.profIntro = 1; await say([`Welcome! I'm ${w.profName}. So you've chosen *${t.name}*!`, `In the ${w.region}, Hakma are born from ideas. Each one embodies a concept from ${t.name}.`, 'They grow stronger when their trainer understands what they embody.', 'In battle you command attacks by answering questions. Right answers hit. Fast answers crit. Wrong answers teach you something.', `${w.cities.length} cities lie north, each teaching a deeper level of ${t.name}. Master them all and you'll be ready for anything — even an interview!`, 'Now — choose your partner from the three capsules on the table.'], w.profName); }
       else await say('Go on, pick a partner from the table!', w.profName);
       return;
     }
     const seen = Object.keys(s.seen).length, caught = Object.keys(s.caught).length;
-    await say([`Your Dex: ${seen} seen, ${caught} captured out of ${Object.keys(w.species).length}.`, caught < 10 ? 'Capture more monsters! Each one is a concept you\'ve met.' : 'Splendid research! Keep going.'], w.profName);
+    await say([`Your Dex: ${seen} seen, ${caught} captured out of ${Object.keys(w.species).length}.`, caught < 10 ? 'Capture more Hakma! Each one is a concept you\'ve met.' : 'Splendid research! Keep going.'], w.profName);
   },
   async starter(o, pi) {
     const s = S(), w = W(); const sp = w.species[o.sp]; const p = s.players[pi] || s.players[0];
@@ -308,7 +308,7 @@ const handlers = {
     if (pi === 0 && s.follower === undefined) { s.follower = mon.uid; G.world.initFollower(); G.world.emote('♥'); await say(`${sp.name} hops out of its capsule and follows you around! (Change your walking partner from the Team menu.)`); }
     if (s.players.every((q) => q.party.length)) {
       s.flags.starter = 1; s.bag.cube = Math.max(s.bag.cube || 0, 5);
-      await say([`A fine choice! ${sp.name} embodies *${sp.concept}*.`, 'Take these Capture Cubes. Weaken wild monsters, then answer the lock-on question to catch them.', 'Press START (Tab / ☰) any time for your menu: team, bag, Codex, quests and more.', `Now head north through Route 1 toward ${w.cities[0].name}. Good luck!`], w.profName);
+      await say([`A fine choice! ${sp.name} embodies *${sp.concept}*.`, 'Take these Capture Cubes. Weaken wild Hakma, then answer the lock-on question to catch them.', 'Press START (Tab / ☰) any time for your menu: team, bag, Codex, quests and more.', `Now head north through Route 1 toward ${w.cities[0].name}. Good luck!`], w.profName);
     }
   },
   async nurse(o) {
@@ -316,14 +316,14 @@ const handlers = {
     const prev = audio.key; audio.stop(); audio.sfx('heal'); healAll(W(), S()); await sleep(1300);
     const m = G.world.map; S().lastHeal = { map: m.id, x: m.entry?.x ?? 5, y: (m.entry?.y ?? 7) - 1 };
     audio.play(m.musicKey, m.musicKey, m.music); void prev;
-    await say('Your monsters are fully healed. Keep learning!', o.name);
+    await say('Your Hakma are fully healed. Keep learning!', o.name);
   },
   async pc() { await menus.archive(); },
   async clerk(o) { await menus.shop(); },
   async researcher(o) {
     const i = o.ci, s = S(), w = W(); const li = researchLine(i); const ln = w.lines[li];
     if (s.flags['research' + i]) { await say(`Thanks again! ${ln.names[0]} embodies *${ln.concept}*. Fascinating stuff.`, o.name); return; }
-    if (lineCaught(li)) { s.flags['research' + i] = 1; s.bag.cube2 = (s.bag.cube2 || 0) + 3; s.bag.supertonic = (s.bag.supertonic || 0) + 2; audio.sfx('badge'); await say([`You caught a ${ln.names[0]}-line monster! Its concept is *${ln.concept}*.`, 'Here — 3 Prime Cubes and 2 Super Tonics for your help!'], o.name); return; }
+    if (lineCaught(li)) { s.flags['research' + i] = 1; s.bag.cube2 = (s.bag.cube2 || 0) + 3; s.bag.supertonic = (s.bag.supertonic || 0) + 2; audio.sfx('badge'); await say([`You caught a ${ln.names[0]}-line Hakma! Its concept is *${ln.concept}*.`, 'Here — 3 Prime Cubes and 2 Super Tonics for your help!'], o.name); return; }
     await say([`I'm studying ${ln.names[0]} — a ${TYPES[ln.type].name}-type that embodies *${ln.concept}*.`, `They live around Route ${ln.route || i + 1}. Could you capture one for me?`], o.name);
   },
   async labkeeper(o) {
@@ -339,7 +339,7 @@ const handlers = {
   async station(o) { await puzzles.station(o.game, o.ci); },
   async gymguide(o) {
     const c = W().cities[o.ci]; const ty = TYPES[c.type]; const counter = weakTo(c.type);
-    await say([`Leader ${c.leader} specializes in *${c.theme}*.`, `Their monsters are mostly ${ty.name}-type. ${TYPES[counter].name} moves hit them super hard!`, 'Remember: in here, every question is about ' + c.theme + '. Read the explanations on any you miss.'], o.name);
+    await say([`Leader ${c.leader} specializes in *${c.theme}*.`, `Their Hakma are mostly ${ty.name}-type. ${TYPES[counter].name} moves hit them super hard!`, 'Remember: in here, every question is about ' + c.theme + '. Read the explanations on any you miss.'], o.name);
   },
   async gifter(o) {
     const s = S(), c = W().cities[o.ci];
@@ -348,7 +348,7 @@ const handlers = {
     await say([`You're taking on ${c.name}? Learning beats grinding, every time.`, 'Take these 2 *Super Tonics* to keep your team going.', 'Insight Shards are rare now — Hall Leaders award one with each badge.'], o.name);
   },
   async guard(o) {
-    if (o.gate === 'starter') { await say(S().flags.starter ? 'Stay on your toes out there!' : 'Get a partner monster from the Professor before you head out!', o.name); return; }
+    if (o.gate === 'starter') { await say(S().flags.starter ? 'Stay on your toes out there!' : 'Get a partner Hakma from the Professor before you head out!', o.name); return; }
     const c = W().cities[o.ci]; const next = W().cities[o.ci + 1];
     await say(S().badges[o.ci] ? `You hold the ${c.badge}! The road ${next ? 'to ' + next.name : 'to the Mastery Summit'} is open.` : `North is closed to those without the ${c.badge}.`, o.name);
   },
@@ -368,8 +368,8 @@ const handlers = {
       await say([`Incredible. You've mastered ${c.theme}.`, `Take the *${c.badge}* as proof!`], title);
       await menus.badgeCeremony(i);
       const sk = Object.entries(FIELD_SKILLS).find(([, v]) => v.badge === i);
-      if (sk) { s.skills[sk[0]] = true; audio.sfx('item'); await say([`Take this too: the *${sk[1].disc}*!`, `Your monsters can now use *${sk[1].name}*. ${sk[1].desc}`, sk[0] === 'fly' ? 'Open the Region Map from your menu and choose a city to Soar there.' : 'Face the obstacle and press A to use it.'], title); }
-      const tm = 'tm_' + c.type; if (ITEMS[tm]) { s.bag[tm] = (s.bag[tm] || 0) + 1; await say(`And a Technique Disc: *${ITEMS[tm].move}*! Teach it to a monster from your Bag — discs can be reused.`, title); }
+      if (sk) { s.skills[sk[0]] = true; audio.sfx('item'); await say([`Take this too: the *${sk[1].disc}*!`, `Your Hakma can now use *${sk[1].name}*. ${sk[1].desc}`, sk[0] === 'fly' ? 'Open the Region Map from your menu and choose a city to Soar there.' : 'Face the obstacle and press A to use it.'], title); }
+      const tm = 'tm_' + c.type; if (ITEMS[tm]) { s.bag[tm] = (s.bag[tm] || 0) + 1; await say(`And a Technique Disc: *${ITEMS[tm].move}*! Teach it to a Hakma from your Bag — discs can be reused.`, title); }
       const key = c.terms.slice(0, 3).map((t) => `• ${t.term}`).join('\n');
       await say([`Before you go, the core ideas of ${c.theme}:\n${key}`, `I'm also giving you a rare *Insight Shard*. ${w.cities[i + 1] ? `Next up: ${w.cities[i + 1].name}, where you'll study ${w.cities[i + 1].theme}.` : 'Only the Mastery Summit remains!'}`], title);
     }
@@ -423,7 +423,7 @@ export async function chooseTopic() {
   for (;;) {
     const gid = await new Promise((res) => {
       ui.panel({ title: 'Choose your field of study', wide: true, cls: 'topics', cols: 1,
-        render: () => `<p class="dim">This choice shapes the whole world: its monsters, cities, leaders and lessons. Pick a category first.</p><div class="tgrid cats">${groups.map((g) => { const n = g.sections.reduce((a, s) => a + s[1].filter((id) => byId[id]).length, 0); return `<button data-nav data-act="grp" data-arg="${g.id}" class="tcard cat"><span class="ti">${g.icon}</span><b>${esc(g.name)}</b><small>${n} subject${n === 1 ? '' : 's'}</small><span class="tb">${esc(g.blurb)}</span></button>`; }).join('')}</div>`,
+        render: () => `<p class="dim">This choice shapes the whole world: its Hakma, cities, leaders and lessons. Pick a category first.</p><div class="tgrid cats">${groups.map((g) => { const n = g.sections.reduce((a, s) => a + s[1].filter((id) => byId[id]).length, 0); return `<button data-nav data-act="grp" data-arg="${g.id}" class="tcard cat"><span class="ti">${g.icon}</span><b>${esc(g.name)}</b><small>${n} subject${n === 1 ? '' : 's'}</small><span class="tb">${esc(g.blurb)}</span></button>`; }).join('')}</div>`,
         actions: { grp: (id) => { res(id); return 'close'; } } }).then(() => res(null));
     });
     if (!gid) return;

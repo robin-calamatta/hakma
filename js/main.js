@@ -23,7 +23,7 @@ import * as menus from './game/menus.js';
 
 
 const cv = document.getElementById('screen'); const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
-G.version = CONFIG.VERSION; G.settings = loadSettings(); G.topicsCount = topics().length;
+G.version = CONFIG.VERSION; try { caches.keys().then((ks) => { const k = ks.find((x) => x.startsWith('hakma-')); if (k) { G.build = k.slice(6); const t = document.getElementById('buildtag'); if (t) t.textContent = 'build ' + G.build; } }).catch(() => {}); } catch {} G.settings = loadSettings(); G.topicsCount = topics().length;
 audio.setVolume('music', G.settings.music); audio.setVolume('sfx', G.settings.sfx);
 const miniCache = new Map();
 G.mini = (sp, era = '') => { const k = sp.uidKey + (TYPES[sp.type]?.color || '') + era; if (!miniCache.has(k)) miniCache.set(k, monsterCanvas(sp, false, era).toDataURL()); return miniCache.get(k); };
@@ -134,7 +134,7 @@ async function manageSaves() {
     const s = slots[pick]; const who = s.players.map((p) => p.name).join(' & ');
     const cloud = net.authed ? ' Its cloud backup on your account will be deleted too.' : '';
     if (!(await ui.confirm(`⚠ Delete *Slot ${pick + 1}* (${who}, ${badgeCount(s)} badges)?${cloud}`))) continue;
-    if (!(await ui.confirm(`This can NOT be undone. All progress, monsters and badges in Slot ${pick + 1} will be gone forever. Delete it?`))) continue;
+    if (!(await ui.confirm(`This can NOT be undone. All progress, Hakma and badges in Slot ${pick + 1} will be gone forever. Delete it?`))) continue;
     deleteSlot(pick); localStorage.setItem('hakma.deleted.' + pick, String(Date.now())); audio.sfx('back');
     if (net.authed) { try { await net.api('DELETE', '/api/saves/' + pick); } catch { ui.toast('Deleted here, but the cloud copy could not be removed yet — it will stay deleted on this device.', 5000); } }
     ui.toast(`Slot ${pick + 1} deleted.`);
@@ -143,7 +143,7 @@ async function manageSaves() {
 // Type names, colours and technique discs follow the subject's genre (Coolant/Combustion for cars, Grammar/Idiom for languages…)
 function applyWorldTheme(W) {
   const genre = applyTypeTheme(W.topic);
-  for (const [id, it] of Object.entries(ITEMS)) if (it.kind === 'tm') { if (!it._base) it._base = { name: it.name, move: it.move }; const mv = genreDiscMove(genre, it.type) || it._base.move; it.move = mv; it.name = 'Disc: ' + mv; it.desc = `Technique Disc. Teaches a monster ${mv} (${TYPES[it.type].name}, 85). Reusable.`; }
+  for (const [id, it] of Object.entries(ITEMS)) if (it.kind === 'tm') { if (!it._base) it._base = { name: it.name, move: it.move }; const mv = genreDiscMove(genre, it.type) || it._base.move; it.move = mv; it.name = 'Disc: ' + mv; it.desc = `Technique Disc. Teaches a Hakma ${mv} (${TYPES[it.type].name}, 85). Reusable.`; }
 }
 G.applyWorldTheme = applyWorldTheme;
 async function titleMenu() {
@@ -155,7 +155,7 @@ async function titleMenu() {
   if (isAdmin()) items.push(['players', '📊 All players (admin)']);
   if (installEvt) items.push(['install', '⬇ Install app']);
   else if (/iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone) items.push(['ios', '⬇ Install on iPhone/iPad']);
-  showTitleBox();
+  showTitleBox(); if (!document.getElementById('buildtag')) { const t = document.createElement('div'); t.id = 'buildtag'; t.textContent = G.build ? 'build ' + G.build : ''; document.body.appendChild(t); }
   const c = await ui.choose(null, items.map(([, h]) => ({ html: h })), { cls: 'titlemenu', cancel: false });
   if (c < 0 || !G.title) return; // menu was replaced (e.g. the install option appeared)
   const k = items[c][0]; hideTitleBox();
@@ -175,15 +175,15 @@ async function newGameFlow() {
   const pick = await ui.choose('Choose a save slot for your new adventure', slots.map((s, i) => ({ html: slotLabel(s, i) })), { cls: 'slots' });
   if (pick < 0) return titleMenu(); slot = pick;
   if (slots[slot] && !(await ui.confirm('Overwrite this save? This cannot be undone.'))) return titleMenu();
-  await ui.say(['Welcome to the world of *Hakma*!', 'Here, monsters are born from ideas — every creature embodies a concept you can learn.', 'Trainers who truly understand their monsters become unstoppable.', 'First, tell me about yourself.']);
+  await ui.say(['Welcome to the world of *Hakma*!', 'Here, Hakma are born from ideas — every creature embodies a concept you can learn.', 'Trainers who truly understand their Hakma become unstoppable.', 'First, tell me about yourself.']);
   const name = await ui.prompt('What is your name?', '', 12);
   deleteSlot(slot); const s = newSave(name);
   await G.wardrobe(0, { intro: true, save: s });
-  await ui.say([`${name || 'Trainer'}! What a great name.`, 'Your journey begins in your bedroom. On your desk is a Study Terminal — use it to choose what you want to master.', 'Every city, monster, leader and lesson will be built around your choice. Let\'s begin!']);
+  await ui.say([`${name || 'Trainer'}! What a great name.`, 'Your journey begins in your bedroom. On your desk is a Study Terminal — use it to choose what you want to master.', 'Every city, Hakma, leader and lesson will be built around your choice. Let\'s begin!']);
   startGame(slot, s);
 }
 function startGame(slot, save) {
-  hideTitleBox();
+  hideTitleBox(); document.getElementById('buildtag')?.remove();
   save = migrate(save); G.slot = slot; G.save = save; G.title = false; G.busy = 0;
   setWorldSeed(save.seed); G.W = getWorld(save.topic || topics()[0].id); applyWorldTheme(G.W);
   input.setPlayers(save.players.length); save.players.forEach((_, i) => input.assignPad(i, i));

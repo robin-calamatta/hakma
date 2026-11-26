@@ -1,4 +1,4 @@
-// "Learn more" — deeper look at one term: definition, worked examples, related questions, the monster that embodies it,
+// "Learn more" — deeper look at one term: definition, worked examples, related questions, the Hakma that embodies it,
 // and (if the admin allows it) links to outside resources that open in a new browser tab.
 import { G } from './state.js';
 import { ui, fmt } from './ui.js';

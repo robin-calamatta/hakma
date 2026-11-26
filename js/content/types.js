@@ -89,7 +89,7 @@ const TOPIC_GENRE = { networking: 'sec', cybersec: 'sec', hacking: 'sec', tradin
 export const genreOf = (topic) => (topic && (topic.genre || TOPIC_GENRE[topic.id])) || 'tech';
 const DEFAULTS = Object.fromEntries(Object.entries(TYPES).map(([k, v]) => [k, { ...v }]));
 export let currentGenre = 'tech';
-// Move sets for generated monsters in a genre (null = use the built-in tech sets)
+// Move sets for generated Hakma in a genre (null = use the built-in tech sets)
 export function genreMoves(genre, type) { const g = GENRES[genre]; if (!g || !g[type]) return null; const [b, boost, mid, ult] = g[type][4]; return [[b, b, b, b], [boost, boost, boost, boost], [mid, ult, ult, mid]]; } // same shape as the built-in sets: [basic options, boost options, strong options]
 export function genreDiscMove(genre, type) { const g = GENRES[genre]; return g && g[type] ? g[type][5] : null; }
 // Switch the visible type names/colours to a topic's genre (called whenever a world is loaded).
