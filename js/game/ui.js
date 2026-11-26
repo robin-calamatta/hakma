@@ -155,6 +155,9 @@ export const ui = {
         l.el.querySelector('.quiz').classList.add('answered'); const fb = l.el.querySelector('.qfeedback'); fb.classList.remove('hidden');
         fb.innerHTML = correct ? `<b class="ok">${quick ? '⚡ Quick Recall!' : '✔ Correct!'}</b> <span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>` : `<b class="bad">${i < 0 ? '⏱ Time\'s up!' : '✘ Not quite.'}</b> Answer: <b>${esc(q.a)}</b><br><span>${fmt(esc(q.expl || ''))}</span><div class="cont">▶ Continue</div>`;
         if (q.say && canSpeak(q.sayLang)) { if (G.settings.speech !== false) speak(q.say, q.sayLang); const sb = document.createElement('button'); sb.className = 'qsay'; sb.textContent = '🔊 ' + q.say; sb.addEventListener('click', (e) => { e.stopPropagation(); speak(q.say, q.sayLang); }); fb.appendChild(sb); }
+        if (opt.extras !== false && G.questionExtras) { try { const X = G.questionExtras(q); if (X) { const d = document.createElement('div'); d.className = 'qx';
+          d.innerHTML = `${X.ex.length ? `<div class="qx-ex"><b>💡 ${X.ex.length > 1 ? 'Examples' : 'Example'}</b><ul>${X.ex.map((e) => `<li>${fmt(esc(e))}</li>`).join('')}</ul></div>` : ''}${X.alt ? `<div class="qx-alt"><b>🔁 Another way to ask it</b><div class="qx-q">${fmt(esc(X.alt.q))}</div><div class="qx-a">→ <b>${esc(X.alt.a)}</b>${X.alt.expl ? ` <span class="dim">— ${fmt(esc(X.alt.expl))}</span>` : ''}</div></div>` : ''}`;
+          fb.insertBefore(d, fb.querySelector('.cont')); } } catch (e) { console.warn(e); } }
         try { term = G.termForQuestion && opt.learn !== false ? G.termForQuestion(q) : null; } catch { term = null; }
         if (term) { const lb = document.createElement('button'); lb.className = 'lmore'; lb.innerHTML = '📖 Learn more: ' + esc(term.term); lb.addEventListener('click', (e) => { e.stopPropagation(); openLearn(); }); fb.appendChild(lb); }
         fb.addEventListener('click', finish);

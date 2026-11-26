@@ -30,6 +30,44 @@ export function termForQuestion(q) {
   return cands[0];
 }
 
+// Extras shown after every answer: one or two examples and a different question on the same idea, with its answer.
+const relCache = new Map();
+const words = (t) => new Set(norm(t).replace(/[^a-z0-9à-ÿ ]+/g, ' ').split(' ').filter((x) => x.length > 3));
+export function questionExtras(q) {
+  const w = W(); if (!w || !q) return null;
+  let T = null; try { T = termForQuestion(q); } catch {}
+  if (!T) { // no term named in the question: pick the chapter term that shares the most words with it
+    const mine = words([q.q, q.a, q.expl].join(' ')); let best = 0;
+    for (const t of w.cities[Math.max(0, Math.min(7, q.ci ?? 0))]?.terms || []) { let sc = 0; for (const x of words([t.term, t.def, ...(t.ex || [])].join(' '))) if (mine.has(x)) sc++; if (sc > best) { best = sc; T = t; } }
+    if (best < 2) T = null; }
+  const ex = []; let alt = null, altId = null;
+  if (T?.ex?.length && !q.regen) { const e = T.ex.slice(); while (e.length && ex.length < 2) ex.push(e.splice(Math.floor(Math.random() * e.length), 1)[0]); }
+  if (q.regen) { // generated drills: make a fresh one of the same kind
+    for (let i = 0; i < 6 && !alt; i++) { const n = q.regen(); if (n && n.q !== q.q) alt = { q: n.q, a: n.a, expl: n.expl }; }
+    if (ex.length < 2) for (let i = 0; i < 6 && ex.length < (ex.length ? 2 : 1); i++) { const n = q.regen(); if (n && n.q !== q.q && n.q !== alt?.q) ex.push(`${n.q.replace(/\n/g, ' ')} → *${n.a}*`); }
+  }
+  if (!alt) {
+    const same = (Q) => Q && Q.q !== q.q && !(Q.a === q.a && Q.ci === q.ci && Q.q.slice(0, 20) === q.q.slice(0, 20));
+    let cand = [];
+    if (T) { if (!relCache.has(T.id)) { const out = []; for (const Q of Object.values(w.qIndex)) { if (Q.id === T.id + 'd' || Q.id === T.id + 'r' || mentions([Q.q, Q.a].join(' '), T.term)) out.push(Q); } relCache.set(T.id, out); } cand = relCache.get(T.id).filter(same); }
+    if (!cand.length) { // closest question in the same chapter by shared words
+      const mine = words(q.q + ' ' + q.a); const pool = w.cities[Math.max(0, Math.min(7, q.ci ?? 0))]?.pool || [];
+      let best = 0; for (const Q of pool) { if (!same(Q)) continue; let sc = 0; for (const x of words(Q.q + ' ' + Q.a)) if (mine.has(x)) sc++; if (sc > best) { best = sc; cand = [Q]; } else if (sc === best && sc > 0) cand.push(Q); }
+      if (!cand.length) cand = pool.filter((Q) => same(Q) && (Q.lvl || 1) <= (q.lvl || 1) + 1);
+    }
+    if (cand.length) { const Q = cand[Math.floor(Math.random() * cand.length)]; alt = { q: Q.q, a: Q.a, expl: Q.expl }; altId = Q.id; }
+  }
+  if (!ex.length && alt && !T) { // no term of its own: borrow the examples of the idea the alternative question is about
+    const T2 = (() => { try { return termForQuestion({ ...alt, id: altId }); } catch { return null; } })();
+    if (T2?.ex?.length) ex.push(...T2.ex.slice(0, 2)); else if (T2) ex.push(`${T2.term}: ${T2.def}`); }
+  if (!ex.length && T) ex.push(`${T.term}: ${T.def}`);
+  if (!ex.length) { // last resort: a closely related worked question from the same chapter
+    const mine = words([q.q, q.a].join(' ')); const pool = w.cities[Math.max(0, Math.min(7, q.ci ?? 0))]?.pool || []; let best = -1, pick = null;
+    for (const Q of pool) { if (Q.q === q.q || Q.q === alt?.q) continue; let sc = Math.random() * 0.5; for (const x of words(Q.q + ' ' + Q.a)) if (mine.has(x)) sc++; if (sc > best) { best = sc; pick = Q; } }
+    if (pick) ex.push(`${pick.q.replace(/\n/g, ' ')} → *${pick.a}*${pick.expl ? ' — ' + pick.expl : ''}`); }
+  return (ex.length || alt) ? { ex, alt, T } : null;
+}
+
 function related(T) {
   const w = W(); const out = [];
   for (const Q of Object.values(w.qIndex)) { if (Q.term) continue; if (mentions([Q.q, Q.a, Q.expl].join(' '), T.term)) out.push(Q); if (out.length >= 3) break; }
@@ -55,4 +93,4 @@ export async function learnMore(T) {
     actions: { open: (i) => { const l = links[+i]; if (l && externalOn()) openLink(l); } } });
 }
 
-G.learnMore = learnMore; G.termForQuestion = termForQuestion;
+G.learnMore = learnMore; G.termForQuestion = termForQuestion; G.questionExtras = questionExtras;

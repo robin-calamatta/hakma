@@ -35,8 +35,9 @@ function same(a, b) { if (a.length !== b.length) return false; let d = 0; for (l
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const bad = (msg, status = 400) => { throw new HttpError(status, msg); };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
-// Admin accounts come from the ADMIN_EMAILS variable (comma-separated), set in the Cloudflare dashboard — never hard-coded here.
-const isAdmin = (env, u) => !!u && String(env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(String(u.email || '').toLowerCase());
+// Admin accounts come from the ADMIN_EMAILS variable (comma-separated) or, if that isn't set, the site's CONTACT_EMAIL —
+// both set in the Cloudflare dashboard, never hard-coded here.
+const isAdmin = (env, u) => !!u && String(env.ADMIN_EMAILS || env.CONTACT_EMAIL || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(String(u.email || '').toLowerCase());
 const pub = (u, env) => ({ id: u.id, username: u.username, email: u.email, friend_code: '', admin: isAdmin(env, u), must_change_password: false, created_at: u.created_at });
 
 async function body(req) { try { const t = await req.text(); if (t.length > MAX_SAVE_BYTES + 10_000) bad('Too large', 413); return t ? JSON.parse(t) : {}; } catch (e) { if (e instanceof HttpError) throw e; bad('Bad JSON'); } }

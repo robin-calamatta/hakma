@@ -144,7 +144,7 @@ function buildWorld(t) {
 
 function fresh(Q) {
   const opts = shuffle([Q.a, ...Q.wrong]);
-  return { id: Q.id, q: Q.q, opts, answer: opts.indexOf(Q.a), expl: Q.expl, ci: Q.ci, a: Q.a, lvl: Q.lvl, say: Q.say, sayLang: Q.sayLang };
+  return { id: Q.id, q: Q.q, opts, answer: opts.indexOf(Q.a), expl: Q.expl, ci: Q.ci, a: Q.a, lvl: Q.lvl, say: Q.say, sayLang: Q.sayLang, regen: Q.regen };
 }
 // Difficulty ramp: each city starts easy and climbs to mastery as you answer its questions correctly.
 export function levelFor(save, ci) {
@@ -209,20 +209,22 @@ function pickQuestion(W, ci, save, opt) {
   // ~1 in 6 questions is a "find the mistake" one (from medium difficulty up)
   if (lvl >= 2 && (city.mistakes?.length || city.mgen?.length) && R() < 0.17) {
     const useGen = city.mgen.length && (!city.mistakes.length || R() < 0.6);
-    if (useGen) { const [q, a, w1, w2, w3, expl] = MATH_MISTAKES[R.pick(city.mgen)](R); return fresh({ id: 'gen', q, a: String(a), wrong: [w1, w2, w3].map(String), expl, ci: c, lvl }); }
+    if (useGen) { const mk = MATH_MISTAKES[R.pick(city.mgen)]; const make = () => { const [q, a, w1, w2, w3, expl] = mk(R); return { id: 'gen', q, a: String(a), wrong: [w1, w2, w3].map(String), expl, ci: c, lvl }; }; return fresh({ ...make(), regen: make }); }
     const pool = city.mistakes.filter((Q) => !W.recent.includes(Q.id)); if (pool.length) { const Q = R.pick(pool); remember(W, Q.id); return fresh(Q); }
   }
   // languages: vocabulary, conjugation and fill-the-blank drills
   if (city.vocab.length || city.conj.length || city.cloze.length) {
     const r = R(); let Q = null;
-    if (city.conj.length && r < 0.18) Q = conjQ(W, city, lvl);
-    else if (city.cloze.length && r < 0.32) Q = clozeQ(W, city, lvl);
-    else if (city.vocab.length && r < 0.62) Q = vocabQ(W, city, lvl);
-    if (Q) return fresh(Q);
+    let mk = null;
+    if (city.conj.length && r < 0.18) mk = () => conjQ(W, city, lvl);
+    else if (city.cloze.length && r < 0.32) mk = () => clozeQ(W, city, lvl);
+    else if (city.vocab.length && r < 0.62) mk = () => vocabQ(W, city, lvl);
+    if (mk) Q = mk();
+    if (Q) return fresh({ ...Q, regen: mk });
   }
   if (city.gen.length && (R() < (city.pool.length > 30 ? 0.4 : 0.6) || !city.pool.length)) {
     const g = GEN[R.pick(city.gen)];
-    if (g) { const [q, a, w1, w2, w3, expl] = g(R, lvl); const wrong = [...new Set([w1, w2, w3].map(String))].filter((x) => x !== String(a)); const Q = { id: 'gen', q, a: String(a), wrong, expl, ci: c, lvl }; return fresh(Q); }
+    if (g) { const make = () => { const [q, a, w1, w2, w3, expl] = g(R, lvl); const wrong = [...new Set([w1, w2, w3].map(String))].filter((x) => x !== String(a)); return { id: 'gen', q, a: String(a), wrong, expl, ci: c, lvl }; }; return fresh({ ...make(), regen: make }); }
   }
   const hand = city.pool.filter((q) => !q.term); const useHand = hand.length && R() < 0.6;
   const Q = pickLv(useHand ? hand : city.pool, lvl, W.recent) || R.pick(city.pool);

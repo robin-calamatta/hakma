@@ -50,6 +50,8 @@ class BattleScene {
   get double() { return (this.foes || []).length > 1; }
   liveFoes() { return (this.foes || []).filter((f) => !f.done && f.mon && f.mon.hp > 0 && f.visible); }
   foePos(key) { const y0 = 96 + (view.h > 216 ? 14 : 0); if (!this.double) return { x: view.w - 92, y: y0, s: 1.6 }; return key === 'e1' ? { x: view.w - 50, y: y0 - 6, s: 1.3 } : { x: view.w - 134, y: y0 + 4, s: 1.3 }; }
+  // monsters on this player's bench (healthy and not already on the field)
+  bench(pi) { return G.save.players[pi].party.filter((m) => m.hp > 0 && !this.allies.some((a) => a.mon === m)); }
   spr(key) { return this.sprites[key] || (this.sprites[key] = { x: 0, y: 0, a: 1, s: 1, flash: 0, glow: 0 }); }
   allyPos(k, n) { const xs = [[110], [72, 170], [56, 122, 188], [46, 104, 162, 220]][n - 1]; const sc = [2, 1.7, 1.5, 1.35][n - 1]; return { x: xs[k] + 8 - (view.w < 384 ? 20 : 0), y: Math.round(view.h * 0.75), s: sc }; }
   update(dt) {
@@ -134,11 +136,12 @@ class BattleScene {
     const dots = (f) => (this.o.kind !== 'wild' && f.team ? `<span class="fdots">${f.team.map((t, i) => `<i class="${i < f.ei ? 'out' : ''}"></i>`).join('')}</span>` : '');
     if (this.double) h += `<div class="enemyhuds">${this.foes.map((f) => (f.mon && f.visible ? box(f.mon, 'enemy', dots(f)) : '')).join('')}</div>`;
     else if (this.enemy && this.enemyVisible) h += box(this.enemy.mon, 'enemy', this.o.kind === 'wild' && G.save.caught[this.enemy.mon.sp] ? ' <span class="caughtmark">◆</span>' : '');
-    h += `<div class="allyhuds ${this.allies.length > 1 ? 'compact' : ''}">` + this.allies.map((a, k) => a.visible ? box(a.mon, 'ally', this.allies.length > 1 ? ` <span class="pl" style="background:${G.save.players[a.pi].color}">P${a.pi + 1}</span>` : '') : '').join('') + '</div>';
+    h += `<div class="allyhuds ${this.allies.length > 1 ? 'compact' : ''}">` + this.allies.map((a, k) => a.visible ? box(a.mon, 'ally', this.coop() ? ` <span class="pl" style="background:${G.save.players[a.pi].color}">P${a.pi + 1}</span>` : '') : '').join('') + '</div>';
     h += `<div class="btext">${this.text ? fmt(esc(this.text)) : ''}</div>`;
     if (this.o.kind !== 'wild' && !this.double && this.enemy?.team) h += `<div class="teamdots">${this.enemy.team.map((t, i) => `<i class="${i < this.enemy.ei ? 'out' : ''}"></i>`).join('')}</div>`;
     el.innerHTML = h; el.className = 'battle';
   }
+  coop() { return new Set(this.allies.map((a) => a.pi)).size > 1; }
   hpMax(m, enemy) { return Math.round(maxHp(G.W, m) * (enemy ? this.hpMul : 1)); }
   msg(text, ms) { this.text = text; this.hud(); const t = ms ?? clamp(500 + text.length * 28, 900, 2600); return new Promise((res) => { const to = setTimeout(() => { this.msgWait = null; res(); }, t); this.msgWait = () => { clearTimeout(to); res(); }; }); }
   async hpTo(m, enemy, to) { const from = m.hp; await tween(380, (k) => { m.hp = from + (to - from) * ease(k); this.hud(); }); m.hp = to; this.hud(); }
@@ -168,6 +171,7 @@ class BattleScene {
     if (!this.allies.length) return 'lose';
     if (G.save.flags.fizz && o.kind !== 'wild') { delete G.save.flags.fizz; this.allies.forEach((a) => { a.boost = 1; }); this.fizzed = true; }
     this.foes = (o.pair || [{ title: o.trainerTitle, team: o.enemies, pal: o.trainerPal }]).map((f, j) => ({ ...f, key: j ? 'e1' : 'e', ei: 0, visible: false, mon: null, boost: 0 }));
+    if (this.double && this.allies.length === 1) { const a0 = this.allies[0]; const m2 = G.save.players[a0.pi].party.find((x) => x.hp > 0 && x !== a0.mon); if (m2) this.allies.push({ pi: a0.pi, mon: m2, boost: 0, visible: false, part: new Set([m2.uid]) }); } // two vs two
     this.team = this.foes[0].team; this.ei = 0;
     if (o.kind === 'wild' && this.allies.length > 1) this.hpMul = 1 + 0.65 * (this.allies.length - 1);
     // intro wipe
@@ -186,7 +190,7 @@ class BattleScene {
       this.enemy = this.foes[0];
     }
     for (let k = 0; k < this.allies.length; k++) { this.allies[k].visible = true; this.hud(); await this.animEnter('a' + k); }
-    await this.msg(this.allies.length > 1 ? 'Team, go!' : `Go, ${monName(W, this.allies[0].mon)}!`, 800);
+    await this.msg(this.allies.length > 1 ? (this.coop() ? 'Team, go!' : `Go, ${monName(W, this.allies[0].mon)} and ${monName(W, this.allies[1].mon)}!`) : `Go, ${monName(W, this.allies[0].mon)}!`, 800);
     if (this.fizzed) await this.msg('The Prairie Fizz kicks in — attack rose!', 1000);
     // main loop
     for (;;) {
@@ -205,7 +209,7 @@ class BattleScene {
     const W = G.W; const pname = G.save.players[al.pi].name;
     if (al.mon.status === 'sick' && R() < 0.25) { this.statusBurst('a' + k, STATUS.sick.col); await this.msg(`${monName(W, al.mon)} feels too sick to move!`, 1100); return; }
     for (;;) {
-      const who = this.allies.length > 1 ? `P${al.pi + 1} ${pname}: ` : '';
+      const who = this.coop() ? `P${al.pi + 1} ${pname}: ` : '';
       this.text = `${who}What will ${monName(W, al.mon)} do?`; this.hud();
       const c = await ui.choose(null, ['⚔ Fight', '🎒 Bag', '◈ Team', this.o.kind === 'wild' ? '➜ Run' : { label: '➜ Run', disabled: true }], { cls: 'bmenu', cancel: false, cols: 2 });
       if (c === 0) {
@@ -226,7 +230,7 @@ class BattleScene {
   }
   async ask(al, tag) {
     const W = G.W; const eq = this.o.qfn?.(); if (eq && !eq.echo) noteAsked(G.save, eq); const q = eq || W.pickQ(this.o.qci ?? G.world.chapter(), G.save, { review: this.o.kind === 'wild' ? 0.25 : 0.15 });
-    const res = await ui.question(q, { tag, who: this.allies.length > 1 ? `P${al.pi + 1} ${G.save.players[al.pi].name}` : null });
+    const res = await ui.question(q, { tag, who: this.coop() ? `P${al.pi + 1} ${G.save.players[al.pi].name}` : null });
     recordAnswer(G.save, q, res.correct, res.quick);
     if (res.correct) { const bonus = Math.round(4 + al.mon.lvl * 1.6 + (res.quick ? 4 : 0)); const ev = gainXp(W, al.mon, bonus); al.xpLog = (al.xpLog || 0) + bonus; await this.levelEvents(al.mon, ev); }
     G.world?.questTick?.('answer', res.correct);
@@ -267,7 +271,7 @@ class BattleScene {
       await this.hpTo(m, false, Math.max(0, m.hp - dmg)); await this.msg(`${monName(W, m)} is hurt by being ${st.name.toLowerCase()}!`, 1000); this.spr('a' + k).flash = 0;
       if (m.hp <= 0) {
         m.hp = 0; await this.animFaint('a' + k); await this.msg(`${monName(W, m)} fainted!`); const p = G.save.players[al.pi];
-        if (p.party.some((x) => x.hp > 0)) await this.switchMenu(al, k, false); else { al.visible = false; al.mon = null; this.hud(); }
+        if (this.bench(al.pi).length) await this.switchMenu(al, k, false); else { al.visible = false; al.mon = null; this.hud(); }
       }
     }
     if (!this.allies.some((a) => a.mon && a.mon.hp > 0)) return 'lose';
@@ -306,8 +310,8 @@ class BattleScene {
     if (tgt.mon.hp <= 0) {
       tgt.mon.hp = 0; await this.animFaint('a' + k); await this.msg(`${monName(W, tgt.mon)} fainted!`);
       const p = G.save.players[tgt.pi];
-      if (p.party.some((m) => m.hp > 0)) { await this.switchMenu(tgt, k, false); }
-      else { tgt.visible = false; tgt.mon = null; this.hud(); if (this.allies.length > 1) await this.msg(`${p.name} is out of usable monsters!`); }
+      if (this.bench(tgt.pi).length) { await this.switchMenu(tgt, k, false); }
+      else { tgt.visible = false; tgt.mon = null; this.hud(); if (this.coop()) await this.msg(`${p.name} is out of usable monsters!`); }
     }
     return !this.allies.some((a) => a.mon && a.mon.hp > 0);
   }
@@ -316,9 +320,9 @@ class BattleScene {
     await this.msg(`${this.o.kind === 'wild' ? 'The wild' : 'Foe'} ${W.species[e.mon.sp].name} fainted!`);
     const sp = W.species[e.mon.sp]; const mult = this.o.kind === 'wild' ? 1 : this.o.kind === 'trainer' ? 1.5 : 1.8;
     const xp = Math.round(((15 + 10 * sp.stage) * e.mon.lvl / 3) * mult);
-    for (const al of this.allies) {
-      if (!al.mon) continue; const p = G.save.players[al.pi];
-      for (const m of p.party) { if (m.hp <= 0 || !al.part.has(m.uid)) continue; const amt = m === al.mon ? xp : Math.round(xp / 2); await this.msg(`${monName(W, m)} gained ${amt} XP!`, 800); await this.levelEvents(m, gainXp(W, m, amt)); }
+    for (const pi of new Set(this.allies.filter((a) => a.mon).map((a) => a.pi))) {
+      const mine = this.allies.filter((a) => a.pi === pi); const p = G.save.players[pi];
+      for (const m of p.party) { if (m.hp <= 0 || !mine.some((a) => a.part.has(m.uid))) continue; const amt = mine.some((a) => a.mon === m) ? xp : Math.round(xp / 2); await this.msg(`${monName(W, m)} gained ${amt} XP!`, 800); await this.levelEvents(m, gainXp(W, m, amt)); }
     }
     e.ei++; if (e === this.foes[0]) this.ei = e.ei;
     if (e.ei >= e.team.length) { e.done = true; if (this.foes.every((f) => f.done)) return true; const other = this.foes.find((f) => !f.done); if (this.o.pair) await this.msg(`${e.title} is out of monsters! ${other.title} fights on!`, 1300); this.enemy = other; return false; }
@@ -326,8 +330,8 @@ class BattleScene {
     // tell the player what's coming and let them swap before it arrives
     const nsp = W.species[nx.sp]; const info = `${nsp.name} (${TYPES[nsp.type]?.name || nsp.type} type) · Lv ${nx.lvl}`;
     for (let k = 0; k < this.allies.length; k++) { const al = this.allies[k]; if (!al.mon || al.mon.hp <= 0) continue; const p = G.save.players[al.pi];
-      if (!p.party.some((m) => m.hp > 0 && m !== al.mon)) continue;
-      const c = await ui.choose(`${e.title || this.o.trainerTitle} is about to send out *${info}*. ${this.allies.length > 1 ? p.name + ': ' : ''}Switch monsters, or keep ${monName(W, al.mon)} in?`, [`Keep ${monName(W, al.mon)}`, 'Switch monster'], { cancel: false });
+      if (!this.bench(al.pi).length) continue;
+      const c = await ui.choose(`${e.title || this.o.trainerTitle} is about to send out *${info}*. ${this.coop() ? p.name + ': ' : ''}Switch monsters, or keep ${monName(W, al.mon)} in?`, [`Keep ${monName(W, al.mon)}`, 'Switch monster'], { cancel: false });
       if (c === 1) await this.switchMenu(al, k, true, info); }
     this.spr(e.key).y = 0; this.spr(e.key).a = 0; e.visible = true; this.hud(); await this.animEnter(e.key);
     await this.msg(`${e.title || this.o.trainerTitle} sent out ${W.species[nx.sp].name}!`);
@@ -341,10 +345,10 @@ class BattleScene {
   }
   async switchMenu(al, k, cancel, foeInfo) {
     const W = G.W; const p = G.save.players[al.pi];
-    const opts = p.party.map((m) => ({ html: monRow(W, m), disabled: m.hp <= 0 || m === al.mon }));
+    const opts = p.party.map((m) => ({ html: monRow(W, m) + (this.allies.some((a) => a !== al && a.mon === m) ? ' <span class="lv">(fighting)</span>' : ''), disabled: m.hp <= 0 || this.allies.some((a) => a.mon === m) }));
     const fm = this.enemy?.mon; const fsp = fm && W.species[fm.sp]; const foe = foeInfo || (fm && fm.hp > 0 && this.enemyVisible !== false ? `${fsp.name} (${TYPES[fsp.type]?.name || fsp.type} type) · Lv ${fm.lvl}` : '');
     const fainted = al.mon && al.mon.hp <= 0;
-    const title = `${this.allies.length > 1 ? p.name + ': ' : ''}${fainted ? `${monName(W, al.mon)} fainted — who goes out next?` : 'Choose a monster.'}${foe ? ` Facing: *${foe}*` : ''}`;
+    const title = `${this.coop() ? p.name + ': ' : ''}${fainted ? `${monName(W, al.mon)} fainted — who goes out next?` : 'Choose a monster.'}${foe ? ` Facing: *${foe}*` : ''}`;
     const i = await ui.choose(title, opts, { cancel, cls: 'teamlist' });
     if (i < 0) return false;
     if (al.mon && al.mon.hp > 0) { await this.msg(`Come back, ${monName(W, al.mon)}!`, 700); }

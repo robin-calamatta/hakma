@@ -291,3 +291,16 @@ pre.qcode { margin: 0.4em 0 0; padding: 0.45em 0.6em; background: #0b0718; borde
 .admintable .ath, .admintable .atr { display: grid; grid-template-columns: 2fr 1.4fr 1fr 1.6fr; gap: 8px; padding: 4px 6px; }
 .admintable .ath { font-weight: bold; border-bottom: 1px solid #4cf0ff66; }
 .admintable .atr:nth-child(odd) { background: rgba(255,255,255,.04); }
+
+/* examples + alternative question after each answer */
+.quiz.answered .qopts { flex: 0 0 auto; overflow: visible; }
+.quiz.answered .qopts button:not(.right):not(.wrongpick) { display: none; } /* after answering keep only the right answer (and your pick) so the feedback has room */
+.quiz.answered .qtext { flex: 0 1 auto; overflow-y: auto; max-height: 30%; }
+.quiz.answered .qfeedback { flex: 1 1 auto; max-height: none; min-height: 0; }
+.qx { margin: 8px 0 4px; padding: 6px 8px; border-left: 3px solid #4cf0ff; background: rgba(76,240,255,.07); border-radius: 4px; font-size: .92em; text-align: left; }
+.qx ul { margin: 3px 0 4px 1.1em; padding: 0; }
+.qx li { margin: 2px 0; }
+.qx-alt { margin-top: 4px; }
+.qx-q { margin-top: 2px; }
+.qx-a { margin-top: 2px; }
+.qx .qcode { font-size: .9em; }
